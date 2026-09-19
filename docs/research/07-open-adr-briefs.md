@@ -9,6 +9,16 @@ Each brief: one problem sentence → options → evidence → lean v0.5 default.
 
 ---
 
+
+---
+
+## Opened: ADR-003 Protocol freeze
+
+**Status:** Proposed — [ADR-003-protocol-freeze.md](../decisions/ADR-003-protocol-freeze.md)  
+**Companion docs:** [docs/protocols/](../protocols/README.md)
+
+Phase 2 freezes the current protocol set (model, tool, message, plugin/registry, runner + gate/result). Growth only when Thomas files a missing-primitive with a failing example under `examples/`. Mike’s `simple.Agent` is a façade, not a new core primitive. This pack’s deferred briefs (events, pydantic, async, parallel, MCP schema, stop, step log) stay out of core until that bar is met.
+
 ## 1. Messages vs events as canonical store
 
 **Problem:** The core must store one history shape that the model and host both trust.

@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | Proposed |
+| **Status** | Accepted |
 | **Date** | 2026-09-19 (IST) |
 | **Owners** | Walter (draft), Thomas (approve missing-primitives), Mike (façade / stress apps), Alice (no core growth), Jessie (gate invariants hold) |
 | **Related** | [ADR-001](ADR-001-core-loop.md) (Accepted — tiny core loop), [ADR-002](ADR-002-model-adapter.md) (Accepted — model adapters as plugins), [docs/protocols/](../protocols/README.md) |
@@ -59,10 +59,16 @@ If every stress-app gap becomes a core edit, the loop grows and ADR-001’s “t
 
 ## Open
 
-- Status remains **Proposed** until Thomas (+ Alice scope, Jessie gate) accept.
+- Status is **Accepted** (Thomas, Mike, Jessie, Alice).
 - Streaming / async / events stay on the research brief track (`07-open-adr-briefs.md`), not silent core adds.
 
 ## Review trail
 
 - [Mike](ADR-003-mike-review.md) — Approve; façade stays non-core
 - Thomas — Approve (in chat)
+
+- [Alice](ADR-003-alice-review.md) — Approve; freeze + façade; Phase 2 product lock
+
+## Post-accept evidence (Thomas)
+
+Disprove pass (`docs/research/09-disprove-core.md`): structured/research/coding agents work without core change. Only wall is streaming (`complete_stream`) — deferred to a later ADR. **Keep freeze.**

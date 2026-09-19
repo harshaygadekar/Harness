@@ -28,3 +28,13 @@ Local `main` until GitHub push unlocks. Order is product-first.
 ## Will not do in core
 
 Graphs, crews, built-in shell/`python_eval`, MCP runtime, memory OS, RAG. See `docs/useful-scope.md`.
+
+
+## Phase 2 (in progress)
+
+- Product lock: `docs/useful-scope-phase2.md`
+- One-file Agent + examples (Mike)
+- Disprove core / missing primitives (Thomas)
+- Security attack suite (Jessie)
+- Protocol docs freeze (Walter)
+- Coding agent = plugins only; no core growth; no “beat fx” claims without numbers
