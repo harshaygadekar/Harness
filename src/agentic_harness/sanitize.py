@@ -29,3 +29,10 @@ def sanitize_text(text: str, *, max_len: int = 500) -> str:
 def safe_tool_error(exc: BaseException) -> str:
     raw = f"{type(exc).__name__}: {exc}"
     return f"TOOL_FAILED: {sanitize_text(raw, max_len=200)}"
+
+
+def safe_model_error(exc: BaseException) -> RuntimeError:
+    """Scrub provider exceptions before the Runner/host sees them."""
+    raw = f"{type(exc).__name__}: {exc}"
+    return RuntimeError(f"MODEL_FAILED: {sanitize_text(raw, max_len=200)}")
+

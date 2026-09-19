@@ -1,19 +1,19 @@
 """Gemini ModelClient plugin. Optional dependency: google-genai.
 
-Reads GEMINI_API_KEY from the environment. Never log the key.
+Reads GEMINI_API_KEY (or GOOGLE_API_KEY) from the environment. Never log the key.
 """
 
 from __future__ import annotations
 
-import json
 import os
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from agentic_harness.messages import Message, ToolCall, Usage
 from agentic_harness.model import ModelResponse
 from agentic_harness.plugin import Disposer, Registry
+from agentic_harness.sanitize import safe_model_error
 from agentic_harness.tool import ToolSpec
 
 
@@ -74,18 +74,29 @@ def _tools_to_gemini(tools: list[ToolSpec] | None) -> list[dict[str, Any]] | Non
     ]
 
 
+def _resolve_api_key(explicit: str | None = None) -> str:
+    key = explicit or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    if not key:
+        raise RuntimeError("GEMINI_API_KEY missing (set in .env)")
+    return key
+
+
+def raise_scrubbed(exc: BaseException) -> None:
+    """Re-raise a sanitized model error (adapter boundary)."""
+    raise safe_model_error(exc) from None
+
+
 @dataclass
 class GeminiModel:
     """ModelClient backed by Google Gemini."""
 
     model: str = "gemini-flash-latest"
-    api_key: str | None = None
+    # Keep key off printable repr / debug dumps (Jessie ADR-002).
+    _api_key: str | None = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
-        key = self.api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-        if not key:
-            raise RuntimeError("GEMINI_API_KEY missing (set in .env)")
-        self.api_key = key
+        # Resolve once; never expose via repr.
+        object.__setattr__(self, "_api_key", _resolve_api_key(self._api_key))
 
     def complete(
         self,
@@ -100,7 +111,8 @@ class GeminiModel:
                 "Install google-genai to use the Gemini plugin: pip install google-genai"
             ) from exc
 
-        client = genai.Client(api_key=self.api_key)
+        key = self._api_key or _resolve_api_key()
+        client = genai.Client(api_key=key)
         system, contents = _messages_to_gemini(messages)
         tool_cfg = _tools_to_gemini(tools)
 
@@ -112,7 +124,6 @@ class GeminiModel:
 
         config = types.GenerateContentConfig(**config_kwargs) if config_kwargs else None
 
-        # Brief retries for transient Google 503 / UNAVAILABLE.
         last_exc: Exception | None = None
         response = None
         for attempt in range(3):
@@ -128,10 +139,10 @@ class GeminiModel:
                 msg = str(exc).upper()
                 transient = "503" in msg or "UNAVAILABLE" in msg or "HIGH DEMAND" in msg
                 if not transient or attempt == 2:
-                    raise
+                    raise_scrubbed(exc)
                 time.sleep(0.8 * (attempt + 1))
         if response is None and last_exc is not None:
-            raise last_exc
+            raise_scrubbed(last_exc)
 
         text_parts: list[str] = []
         tool_calls: list[ToolCall] = []
