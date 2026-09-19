@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -81,7 +82,7 @@ class GeminiModel:
     api_key: str | None = None
 
     def __post_init__(self) -> None:
-        key = self.api_key or os.environ.get("GEMINI_API_KEY")
+        key = self.api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
         if not key:
             raise RuntimeError("GEMINI_API_KEY missing (set in .env)")
         self.api_key = key
@@ -110,11 +111,27 @@ class GeminiModel:
             config_kwargs["tools"] = tool_cfg
 
         config = types.GenerateContentConfig(**config_kwargs) if config_kwargs else None
-        response = client.models.generate_content(
-            model=self.model,
-            contents=contents,
-            config=config,
-        )
+
+        # Brief retries for transient Google 503 / UNAVAILABLE.
+        last_exc: Exception | None = None
+        response = None
+        for attempt in range(3):
+            try:
+                response = client.models.generate_content(
+                    model=self.model,
+                    contents=contents,
+                    config=config,
+                )
+                break
+            except Exception as exc:  # noqa: BLE001 — narrow by message below
+                last_exc = exc
+                msg = str(exc).upper()
+                transient = "503" in msg or "UNAVAILABLE" in msg or "HIGH DEMAND" in msg
+                if not transient or attempt == 2:
+                    raise
+                time.sleep(0.8 * (attempt + 1))
+        if response is None and last_exc is not None:
+            raise last_exc
 
         text_parts: list[str] = []
         tool_calls: list[ToolCall] = []
