@@ -13,6 +13,7 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+gemini = ["google-genai>=1.0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
