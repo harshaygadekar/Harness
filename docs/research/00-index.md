@@ -3,7 +3,7 @@
 **Audience:** Thomas (AI/ML Research Lead), Walter (ADR-001 core loop)  
 **Project goal:** A minimal, useful, fast, extensible agentic harness. Core stays small. Everything else is a plugin.  
 **Date:** 2026-09-19 (IST)  
-**Status:** Research pack updated. DeepSeek Harness is primary design reference. ADR-001 draft at `docs/decisions/ADR-001-core-loop.md` (awaiting review).
+**Status:** Research pack updated. DeepSeek Harness is primary design reference. ADR-001 Accepted. Open-question briefs in `07-open-adr-briefs.md`.
 
 ## Correction (Harsha)
 
@@ -21,11 +21,12 @@ See [06-deepseek-harness.md](06-deepseek-harness.md). Walter drafts ADR-001 from
 | [04-keep-out-of-core.md](04-keep-out-of-core.md) | Features that must stay out of core; plugin boundaries |
 | [05-lessons-for-architecture.md](05-lessons-for-architecture.md) | Engineering lessons for ADR-001; candidates and open questions |
 | [06-deepseek-harness.md](06-deepseek-harness.md) | **Primary reference:** DeepSeek Harness + Cordis paper — abstractions, plugins, loop, tools, lessons |
+| [07-open-adr-briefs.md](07-open-adr-briefs.md) | Short evidence briefs for ADR-001 deferred open questions (v0.5 lean defaults) |
 | [sources.md](sources.md) | URLs and papers used |
 
 ## One-paragraph status
 
-Across OpenAI Agents SDK, Anthropic Claude Agent SDK, LangGraph, PydanticAI, smolagents, OpenHands, SWE-agent / mini-SWE-agent, AutoGen/AG2, CrewAI, Letta, MCP, and **DeepSeek Harness (`dsh`)**, the recurring useful agent is a small loop: model call → parse tool calls → execute tools → append observations → stop or continue. DeepSeek Harness makes that explicit: models, tools, sessions, sandboxes, storage, **and the agent loop itself** are Cordis plugins composed by profile/bundle/patch — backed by the Cordis paper on spatiotemporal composability (arXiv:2608.25512). Heavy frameworks add graphs, multi-agent crews, memory OS layers, sandboxes, MCP hosting, observability, and persistence around the loop. Lean systems (smolagents MultiStepAgent, mini-SWE-agent ~100-line loop, OpenAI’s “own the loop,” OpenHands’ package split, dsh Minimal mode) show the core can stay thin if tool registries, transports, memory, and orchestration are plugins. This pack recommends a tiny core (run loop interface + default driver, tool protocol, message/state or session log, cancel/error hooks, plugin registry with teardown) and lists what to keep out. **Walter drafted ADR-001 from `05` + `06` (DeepSeek Harness as primary reference) without an API key. Review pending before code.**
+Across OpenAI Agents SDK, Anthropic Claude Agent SDK, LangGraph, PydanticAI, smolagents, OpenHands, SWE-agent / mini-SWE-agent, AutoGen/AG2, CrewAI, Letta, MCP, and **DeepSeek Harness (`dsh`)**, the recurring useful agent is a small loop: model call → parse tool calls → execute tools → append observations → stop or continue. DeepSeek Harness makes that explicit: models, tools, sessions, sandboxes, storage, **and the agent loop itself** are Cordis plugins composed by profile/bundle/patch — backed by the Cordis paper on spatiotemporal composability (arXiv:2608.25512). Heavy frameworks add graphs, multi-agent crews, memory OS layers, sandboxes, MCP hosting, observability, and persistence around the loop. Lean systems (smolagents MultiStepAgent, mini-SWE-agent ~100-line loop, OpenAI’s “own the loop,” OpenHands’ package split, dsh Minimal mode) show the core can stay thin if tool registries, transports, memory, and orchestration are plugins. This pack recommends a tiny core (run loop interface + default driver, tool protocol, message/state or session log, cancel/error hooks, plugin registry with teardown) and lists what to keep out. **ADR-001 Accepted** (tiny protocol core). Deferred open questions have short evidence briefs in `07-open-adr-briefs.md` for Walter to open later. No API key used for architecture.
 
 ## Scope notes
 

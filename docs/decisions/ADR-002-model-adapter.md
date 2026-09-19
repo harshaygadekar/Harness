@@ -2,9 +2,9 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | Proposed |
+| **Status** | Accepted |
 | **Date** | 2026-09-19 (IST) |
-| **Owners** | Walter (draft), Mike (implement), Jessie (security), Thomas (review) |
+| **Owners** | Walter (draft), Mike (implement; scrub nits), Jessie (approve + nits), Thomas (approve), Alice (product: no core growth) |
 | **Related** | [ADR-001](ADR-001-core-loop.md) (Accepted — tiny core, `ModelClient` protocol), `SECURITY.md`, Jessie scrub (`AIza` / `AQ.`), Gemini plugin spike |
 
 ---
@@ -33,18 +33,21 @@ ADR-001 accepted a provider-agnostic `ModelClient` protocol and denied baking pr
 
 Core must **not** import `google-genai` or any other provider SDK. Optional extras may list provider deps; cold import of core remains stdlib-only.
 
+**Tool-schema mapping (Thomas):** map core tool JSON Schema to the provider’s tool format **inside the adapter**. Do not grow core `ModelClient` with provider-specific fields.
+
 ---
 
 ## Gemini plugin rules
 
 Applies to `agentic_harness.plugins.gemini` (or successor package under the gemini extra).
 
-1. **Credentials** — Read `GEMINI_API_KEY` or `GOOGLE_API_KEY` from the environment only. Never commit keys. Never print or log the key (including debug).
+1. **Credentials** — Read `GEMINI_API_KEY` or `GOOGLE_API_KEY` from the environment only (prefer at call time). Never commit keys. Never print or log the key. Do **not** store the key on a printable model field (`repr`/`str`/`debug` dumps must not show it).
 2. **Default model** — `gemini-flash-latest` unless the host overrides.
 3. **Retries / backoff** — Transient Gemini **503** / UNAVAILABLE / high-demand retries and backoff live **only in the plugin** (Mike). Core does not retry provider HTTP errors.
-4. **Error sanitization** — Before surfacing failures to the runner/host, scrub secrets per Jessie patterns (including Google `AIza…` and `AQ.…` keys, plus existing `sk-` / Bearer / `api_key` / home-path rules in `sanitize.py`). Prefer short safe text; never echo raw SDK payloads that may embed credentials.
-5. **No finish tool, no shell** — Adapters implement `ModelClient` only. They do not register a `finish` tool, shell, `python_eval`, or other side-effect tools.
-6. **SECURITY.md** — No `Tool.call` outside `Runner`; adapters are not a bypass path for tools.
+4. **Sanitize before raise (Jessie)** — After retries fail, do **not** re-raise raw SDK errors. Wrap with `sanitize_text` / a safe `ModelError` before `Runner` or the host sees them. Scrub Google `AIza…` / `AQ.…` plus existing `sk-` / Bearer / `api_key` / home-path rules. Prefer short safe text; never echo raw SDK payloads that may embed credentials.
+5. **Adapter scrub test (Jessie)** — Unit test: a fake exception containing `AIza…` / `AQ.…` is scrubbed on the **adapter** boundary (not only tool errors).
+6. **No finish tool, no shell** — Adapters implement `ModelClient` only. They do not register a `finish` tool, shell, `python_eval`, or other side-effect tools.
+7. **SECURITY.md** — No `Tool.call` outside `Runner`; adapters are not a bypass path for tools.
 
 ---
 
@@ -82,9 +85,17 @@ Applies to `agentic_harness.plugins.gemini` (or successor package under the gemi
 
 ---
 
-## Review checklist (empty until reviews land)
+## Review trail
 
-- [x] Thomas — architecture / protocol boundary ([review](ADR-002-thomas-review.md))
-- [x] Mike — Gemini retries only in plugin; fake client default in CI ([review](ADR-002-mike-review.md))
-- [ ] Jessie — no key logging; scrub `AIza` / `AQ.` on adapter errors; no `Tool.call` outside Runner
-- [ ] Status → Accepted after reviews
+- [Thomas](ADR-002-thomas-review.md) — Approve; tool-schema mapping in adapter
+- [Mike](ADR-002-mike-review.md) — Approve; spike matches
+- [Jessie](ADR-002-jessie-review.md) — Approve; sanitize-before-raise + no printable key + adapter scrub test
+
+## Code follow-ups (Mike, local until PAT)
+
+- [x] Sanitize Gemini errors before re-raise / return to Runner
+- [x] Key not printable on model `repr`
+- [x] Unit test: adapter boundary scrubs `AIza` / `AQ.` in exceptions (11 tests green)
+- [x] Architecture Accepted; Jessie verified scrub nits
+
+- [Alice](ADR-002-alice-review.md) — Approve; providers stay plugins; no core growth

@@ -5,7 +5,7 @@
 | **Status** | Accepted |
 | **Date** | 2026-09-19 (IST) |
 | **Owners** | Walter (draft), Thomas (approve), Alice (product lock), Jessie (C1–C5 in spike), Mike (spike green) |
-| **Related** | `docs/useful-scope.md`, `docs/research/02`, `04`, `05`, `06` |
+| **Related** | `docs/useful-scope.md`, `docs/research/02`, `04`, `05`, `06`; [ADR-002](ADR-002-model-adapter.md) (model adapter plugins — Proposed) |
 
 ---
 
@@ -259,6 +259,7 @@ No full implementations in this ADR.
 7. **Stop semantics** — final text with no tool calls vs explicit `finish` tool vs both (`05` Q8). **Keep open;** do **not** add a `finish` tool in the first spike (Thomas).
 8. **Append-only step log plugin** — when message list is not enough for resume/fork.
 9. **Package / PyPI name** — avoid implying Claude Code or DeepSeek product compatibility (`05` Q10).
+10. **Provider adapters** — see [ADR-002](ADR-002-model-adapter.md) (`ModelClient` protocol in core; Gemini/other SDKs as plugins).
 
 ---
 
