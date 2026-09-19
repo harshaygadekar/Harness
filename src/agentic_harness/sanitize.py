@@ -8,6 +8,9 @@ _PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"Bearer\s+[A-Za-z0-9\-._~+/]+=*", re.I),
     re.compile(r"(?i)(api[_-]?key|password|secret|token)\s*[:=]\s*\S+"),
     re.compile(r"AKIA[0-9A-Z]{16}"),
+    # Google API keys (AIza… and AQ.… style)
+    re.compile(r"AIza[0-9A-Za-z\-_]{20,}"),
+    re.compile(r"AQ\.[A-Za-z0-9_\-]{20,}"),
     re.compile(r"(?i)/(?:home|Users)/[^\s/]+"),
 ]
 

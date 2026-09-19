@@ -197,3 +197,8 @@ def test_package_surface_has_no_shell():
 def test_sanitize_patterns():
     assert "sk-abcdefghijklmnop" not in sanitize_text("token sk-abcdefghijklmnop here")
     assert "[REDACTED]" in sanitize_text("api_key=SECRET")
+    assert "AIzaSyDummyKeyValue123456789012" not in sanitize_text(
+        "leak AIzaSyDummyKeyValue123456789012 end"
+    )
+    fake_aq = "AQ." + "x" * 24
+    assert fake_aq not in sanitize_text(f"leak {fake_aq} end")
