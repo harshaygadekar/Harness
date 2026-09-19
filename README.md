@@ -52,6 +52,8 @@ Graphs, crews, MCP runtime, Docker/sandbox, RAG, memory OS, observability SaaS, 
 - `docs/research/` — research pack (incl. DeepSeek Harness note)
 - `CONTRIBUTING.md` — branch / PR workflow
 - `SECURITY.md` — keys, gate, scrub rules
+- `docs/plugin-authoring.md` — write a plugin
+- `docs/useful-scope-phase2.md` — Phase 2 coding-agent lock
 
 ## Contribute
 

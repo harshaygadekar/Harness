@@ -30,11 +30,13 @@ Local `main` until GitHub push unlocks. Order is product-first.
 Graphs, crews, built-in shell/`python_eval`, MCP runtime, memory OS, RAG. See `docs/useful-scope.md`.
 
 
-## Phase 2 (in progress)
+## Phase 2 (complete for night cut)
 
-- Product lock: `docs/useful-scope-phase2.md`
-- One-file Agent + examples (Mike)
-- Disprove core / missing primitives (Thomas)
-- Security attack suite (Jessie)
-- Protocol docs freeze (Walter)
-- Coding agent = plugins only; no core growth; no “beat fx” claims without numbers
+- [x] Product lock: `docs/useful-scope-phase2.md`
+- [x] Product sign-off: `docs/product-signoff-phase2.md`
+- [x] Plugin authoring: `docs/plugin-authoring.md`
+- [x] One-file Agent + examples (Mike)
+- [x] Disprove core / missing primitives (Thomas) — freeze kept
+- [x] Security attack suite (Jessie)
+- [x] Protocol docs freeze (Walter) — ADR-003 Accepted
+- [x] Coding agent = plugins only; no core growth; no “beat fx” claims without numbers
