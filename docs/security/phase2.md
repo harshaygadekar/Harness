@@ -1,18 +1,15 @@
 # Phase 2 — Security track (Jessie)
 
-## Ownership
+## Status: complete for night push
 
-Permission tests, secret scrub, prompt-injection boundaries, malicious tool/plugin behavior.
-No core growth unless Thomas proves a missing primitive.
+### Ownership
+Permission tests, secret scrub, injection boundaries, coding-plugin confinement. No core growth.
 
-## Attacks in `tests/security/`
+### Delivered
+1. `tests/security/test_attacks.py` — deny-all, allowlist, scrub, injection args, no Registry execute.
+2. `tests/security/test_coding_security.py` — workspace path escape (relative_to), shell not in default pack, shell soft deny.
+3. `plugins/coding/workspace.py` — path guard uses `Path.relative_to` (fixes startswith prefix bug).
+4. Freeze: shell stays opt-in; gate still required for Allow.
 
-1. Deny-all / allowlist still holds on `simple.Agent`.
-2. Tool that raises with a secret → observation scrubbed.
-3. Model requests a tool not on the allowlist → never runs.
-4. Prompt-style payload in tool args does not bypass the gate.
-5. Registry still has no execute helper.
-
-## Not claiming yet
-
-Sandbox, process isolation, or MCP security. Those need plugins + evidence.
+### Not claiming
+OS sandbox, seccomp, or network jail. Those need a later plugin ADR.

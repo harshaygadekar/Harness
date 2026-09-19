@@ -3,7 +3,7 @@
 **Audience:** Thomas (AI/ML Research Lead), Walter (ADR-001 core loop)  
 **Project goal:** A minimal, useful, fast, extensible agentic harness. Core stays small. Everything else is a plugin.  
 **Date:** 2026-09-19 (IST)  
-**Status:** Research pack updated. DeepSeek Harness is primary design reference. ADR-001 Accepted. Open-question briefs in `07-open-adr-briefs.md`. [ADR-003](../decisions/ADR-003-protocol-freeze.md) Proposed (protocol freeze + `docs/protocols/`). Harness comparison vs fx / oh-my-pi / dsh in `08-harness-comparison.md`. Thomas disprove-core pass in `09-disprove-core.md` (keep freeze). Honest fx beat-goals (no “we beat fx” claims) in `10-fx-beat-goals.md`.
+**Status:** Research pack updated. DeepSeek Harness is primary design reference. ADR-001 Accepted. Open-question briefs in `07-open-adr-briefs.md`. [ADR-003](../decisions/ADR-003-protocol-freeze.md) Proposed (protocol freeze + `docs/protocols/`). Harness comparison vs fx / oh-my-pi / dsh in `08-harness-comparison.md`. Thomas disprove-core pass in `09-disprove-core.md` (keep freeze). Honest fx beat-goals (do **not** claim we beat fx) in `10-fx-beat-goals.md`.
 
 ## Correction (Harsha)
 
@@ -24,6 +24,7 @@ See [06-deepseek-harness.md](06-deepseek-harness.md). Walter drafts ADR-001 from
 | [07-open-adr-briefs.md](07-open-adr-briefs.md) | Short evidence briefs for ADR-001 deferred open questions (v0.5 lean defaults) |
 | [08-harness-comparison.md](08-harness-comparison.md) | Factual comparison: our harness vs fx (Vercel Zig), oh-my-pi (omp), DeepSeek Harness (dsh) |
 | [09-disprove-core.md](09-disprove-core.md) | Phase 2 apps vs tiny core: what works, streaming wall, keep-freeze recommendation |
+| [10-fx-beat-goals.md](10-fx-beat-goals.md) | fx published numbers + fair/unfair axes + Phase 2/3 MUST/SHOULD/STRETCH + bench DoD (do **not** claim we beat fx) |
 | [sources.md](sources.md) | URLs and papers used |
 
 ## One-paragraph status

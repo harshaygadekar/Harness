@@ -88,6 +88,20 @@ URLs and papers used for this research pack. Fetched or searched 2026-09-19 (IST
 
 ---
 
+
+### fx (Vercel Labs) — beat-goals research (2026-09-19 IST evening)
+- https://fx.sh/
+- https://github.com/vercel-labs/fx
+- https://raw.githubusercontent.com/vercel-labs/fx/main/README.md
+- https://raw.githubusercontent.com/vercel-labs/fx/main/AGENTS.md
+- https://raw.githubusercontent.com/vercel-labs/fx/main/benchmarks/check_budgets.py
+- https://raw.githubusercontent.com/vercel-labs/fx/main/CHANGELOG.md
+- https://fx.sh/docs/capabilities/tools.md
+- https://fx.sh/llms.txt
+- https://api.github.com/repos/vercel-labs/fx/releases/latest (tag **v0.0.10**)
+- Local: `benchmarks/cold_import.py`; unpacked `fx-linux-x86_64` from release asset (11,821,040 bytes); `FX_BENCH=1 fx help` smoke timings on research host (informational only)
+- Secondary (not SLA): https://devaireviews.com/blog/vercel-fx-coding-agent-review/
+
 ## Papers
 
 - Shi, Zhang, Cui, **A Programming Paradigm for Spatiotemporal Composability** (Cordis / DeepSeek Harness foundation), 2026. https://arxiv.org/abs/2608.25512

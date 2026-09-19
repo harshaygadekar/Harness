@@ -12,6 +12,8 @@ class Workspace:
     def resolve(self, rel: str) -> Path:
         rel = (rel or ".").lstrip("/")
         target = (self.root / rel).resolve()
-        if not str(target).startswith(str(self.root)):
-            raise PermissionError("path escapes workspace")
+        try:
+            target.relative_to(self.root)
+        except ValueError as exc:
+            raise PermissionError("path escapes workspace") from exc
         return target
