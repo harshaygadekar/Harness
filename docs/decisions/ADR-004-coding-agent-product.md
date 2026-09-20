@@ -2,10 +2,10 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | **Proposed** (not Accepted) |
+| **Status** | **Accepted** |
 | **Date** | 2026-09-20 (IST) |
 | **Owners** | Walter (draft), Alice (product), Thomas (evidence), Mike (impl after Accept), Jessie (security) |
-| **Related** | [ADR-001](ADR-001-core-loop.md) (Accepted — tiny core loop), [ADR-002](ADR-002-model-adapter.md) (Accepted — model adapters as plugins), [ADR-003](ADR-003-protocol-freeze.md) (Accepted — protocol freeze + `simple.Agent` façade), [docs/useful-scope-phase2.md](../useful-scope-phase2.md), [docs/research/10-fx-beat-goals.md](../research/10-fx-beat-goals.md). **Await** Thomas `docs/research/11-coding-agent-product.md` before Accept (file not present yet; cite `10-fx-beat-goals.md` until then). |
+| **Related** | [ADR-001](ADR-001-core-loop.md), [ADR-002](ADR-002-model-adapter.md), [ADR-003](ADR-003-protocol-freeze.md), [docs/useful-scope-phase2.md](../useful-scope-phase2.md), [docs/research/10-fx-beat-goals.md](../research/10-fx-beat-goals.md), [docs/research/11-coding-agent-product.md](../research/11-coding-agent-product.md) (Thomas Accept evidence). |
 
 ---
 
@@ -32,7 +32,7 @@ Without this ADR, Phase 2 risks either (a) growing core for MCP/shell/sandbox co
 3. **Jessie security invariants hold.** Deny-all + Allow-by-name; path guard (`Path.relative_to`); no secrets in tool observations / errors; shell opt-in.
 4. **Honest product framing.** Python library ≠ Zig native CLI. Cite measured numbers only (`docs/benchmarks/phase2-numbers.md`, `10-fx-beat-goals.md`).
 5. **Native rewrite is out of scope for this ADR** unless Harsha explicitly wants an fx-class binary (that is Candidate B / a separate ADR).
-6. **Evidence gate for Accept.** Status stays **Proposed** until Thomas ships `docs/research/11-coding-agent-product.md` (or equivalent Accept-ready evidence) and Alice product-signs.
+6. **Evidence gate.** Thomas `11-coding-agent-product.md` landed. Jessie security conditions bind through ship. Alice product sign-off tracked in review trail.
 
 ---
 
@@ -63,7 +63,7 @@ Without this ADR, Phase 2 risks either (a) growing core for MCP/shell/sandbox co
 
 **Candidate A** — Python library product + plugin coding agent.
 
-Status remains **Proposed** until Open items below clear.
+**Accepted** — Candidate A. Open items below are ship follow-ups, not reopen of the product shape.
 
 ---
 
@@ -93,20 +93,22 @@ Status remains **Proposed** until Open items below clear.
 
 Gates **stay**; this ADR does not weaken them:
 
-1. **Deny-all** default; host Allow each coding tool by name.
+1. **Deny-all** default; host Allow each coding tool by name. **CLI must not silently Allow all coding tools on start.**
 2. **Path guard** on workspace fs plugins (`Path.relative_to` — no prefix/`startswith` bugs).
-3. **Shell opt-in** — not in default pack; still gated.
-4. **Secret scrub** on tool errors / observations (existing Jessie patterns).
-5. **No OS sandbox / seccomp claim** in this ADR — later plugin ADR if needed.
-6. Jessie reviews coding-plugin confinement before Accept → ship.
+3. **Shell opt-in** — not in default pack; still gated by name.
+4. **Secret scrub** on tool errors / model-adapter errors; CLI logs / crash dumps must not print keys.
+5. **In-process plugins = full trust.** Document that. Process isolation = later ADR.
+6. **No OS sandbox claim** for Candidate A. Do not market “sandboxed like fx” without a sandbox plugin + tests.
+7. **CLI ship gate (Jessie):** Allow-list wiring, workspace root binding, no secrets in `--help` / env echo / error paths — before release, not a block on this Accept.
 
 ---
 
-## Open
+## Open (ship follow-ups)
 
-- [ ] Thomas: `docs/research/11-coding-agent-product.md` (Accept evidence). Until then, cite [`10-fx-beat-goals.md`](../research/10-fx-beat-goals.md); this ADR **awaits Thomas 11** for Accept.
-- [ ] Alice: product sign-off on Candidate A (PyPI + CLI + plugins; packaging SHOULD; native NON-GOAL here).
-- [ ] Jessie: security review of coding plugin pack + CLI entry surfaces.
+- [x] Thomas: `docs/research/11-coding-agent-product.md` (Accept evidence).
+- [ ] Alice: product sign-off note (lock already matches Candidate A).
+- [x] Jessie: Candidate A approve + conditions (CLI ship tests remaining).
+- [ ] Mike: CLI + PyPI after Accept; packaging SHOULD spike.
 - [ ] Harsha: confirm native rewrite stays out of scope (else open Candidate B ADR separately).
 
 ---
@@ -126,15 +128,15 @@ Gates **stay**; this ADR does not weaken them:
 
 | Reviewer | Status | Notes |
 |----------|--------|-------|
-| Alice (product) | | |
-| Thomas (evidence / 11) | | |
-| Jessie (security) | | |
-| Mike (impl readiness) | | |
-| Walter (draft) | Proposed draft | |
+| Alice (product) | pending note | Phase 2 lock already = Candidate A |
+| Thomas (evidence / 11) | approve | `11-coding-agent-product.md` |
+| Jessie (security) | approve | conditions above; CLI ship gate |
+| Mike (impl readiness) | approve | hold CLI/pack until Accept — now clear |
+| Walter (draft) | Accepted | Candidate A |
 
 ---
 
-## Consequences (if Accepted later)
+## Consequences
 
 - Product story = **embeddable Python harness + coding plugins**, not “fx killer.”
 - Marketing and docs must cite fair axes only; never claim 2 ms process start or 6 MiB binary for the Python package.
@@ -143,3 +145,7 @@ Gates **stay**; this ADR does not weaken them:
 ## Review trail
 
 - [Mike](ADR-004-mike-review.md) — Approve Candidate A; hold impl until Accept
+- [Thomas](ADR-004-thomas-review.md) — Approve Candidate A; `11` evidence
+- [Jessie](ADR-004-jessie-review.md) — Approve Candidate A; CLI ship conditions
+
+- [Alice](ADR-004-alice-review.md) — Approve Candidate A; product lock Locked
