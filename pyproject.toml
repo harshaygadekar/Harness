@@ -11,12 +11,19 @@ requires-python = ">=3.11"
 license = { text = "MIT" }
 dependencies = []
 
+[project.scripts]
+agentic-harness = "agentic_harness.cli:main"
+ah = "agentic_harness.cli:main"
+
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
 gemini = ["google-genai>=1.0"]
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["src", "."]
+include = ["agentic_harness*", "plugins*"]
+exclude = ["tests*", "benchmarks*", "examples*", "docs*", "scripts*", "build*", "dist*"]
+
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

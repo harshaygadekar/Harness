@@ -106,7 +106,7 @@ Gates **stay**; this ADR does not weaken them:
 ## Open (ship follow-ups)
 
 - [x] Thomas: `docs/research/11-coding-agent-product.md` (Accept evidence).
-- [ ] Alice: product sign-off note (lock already matches Candidate A).
+- [x] Alice: product sign-off (`ADR-004-alice-review.md` + `useful-scope-coding-product.md`).
 - [x] Jessie: Candidate A approve + conditions (CLI ship tests remaining).
 - [ ] Mike: CLI + PyPI after Accept; packaging SHOULD spike.
 - [ ] Harsha: confirm native rewrite stays out of scope (else open Candidate B ADR separately).
@@ -128,7 +128,7 @@ Gates **stay**; this ADR does not weaken them:
 
 | Reviewer | Status | Notes |
 |----------|--------|-------|
-| Alice (product) | pending note | Phase 2 lock already = Candidate A |
+| Alice (product) | approve | Candidate A + coding-product scope lock |
 | Thomas (evidence / 11) | approve | `11-coding-agent-product.md` |
 | Jessie (security) | approve | conditions above; CLI ship gate |
 | Mike (impl readiness) | approve | hold CLI/pack until Accept — now clear |
