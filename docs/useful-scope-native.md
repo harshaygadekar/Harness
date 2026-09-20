@@ -2,7 +2,7 @@
 
 **Owner:** Alice  
 **Date:** 2026-09-20  
-**Status:** Proposed until ADR-005 Accepted.  
+**Status:** Locked. ADR-005 Accepted (Rust).  
 **Rule:** Python Harness stays frozen. This is a **separate product**.
 
 ---

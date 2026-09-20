@@ -59,6 +59,20 @@ No shell. No `python_eval`. No MCP. No multi-agent. No server in core.
 
 Graphs, crews, MCP runtime, Docker/sandbox, RAG, memory OS, observability SaaS, built-in shell/browser tools. Those are plugins if we ever need them.
 
+
+## Native track (ADR-005)
+
+Separate Rust product under `native/`. Python core stays frozen.
+
+```bash
+cd native && cargo build --release -p harness-cli
+./target/release/harness version
+./target/release/harness run --prompt "hi"              # deny-all
+./target/release/harness run --prompt "hi" --allow echo
+```
+
+No beat-fx claim until native benches land. See `native/README.md`.
+
 ## Docs
 
 - `docs/useful-scope.md` — product lock
