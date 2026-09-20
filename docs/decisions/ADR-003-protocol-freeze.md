@@ -5,7 +5,7 @@
 | **Status** | Accepted |
 | **Date** | 2026-09-19 (IST) |
 | **Owners** | Walter (draft), Thomas (approve missing-primitives), Mike (façade / stress apps), Alice (no core growth), Jessie (gate invariants hold) |
-| **Related** | [ADR-001](ADR-001-core-loop.md) (Accepted — tiny core loop), [ADR-002](ADR-002-model-adapter.md) (Accepted — model adapters as plugins), [docs/protocols/](../protocols/README.md) |
+| **Related** | [ADR-001](ADR-001-core-loop.md) (Accepted — tiny core loop), [ADR-002](ADR-002-model-adapter.md) (Accepted — model adapters as plugins), [ADR-004](ADR-004-coding-agent-product.md) (**Accepted** — coding-agent product shape), [docs/protocols/](../protocols/README.md) |
 
 ---
 
