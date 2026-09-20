@@ -77,7 +77,8 @@ impl Workspace {
             canon_parent.join(name)
         };
 
-        if !joined.starts_with(&self.root) {
+        // Use strip_prefix, not starts_with (Jessie: /tmp/ws vs /tmp/ws_evil).
+        if joined.strip_prefix(&self.root).is_err() {
             return Err(WorkspaceError::Escape(rel.to_string()));
         }
         Ok(joined)
@@ -95,6 +96,20 @@ mod tests {
         let ws = Workspace::new(&dir).unwrap();
         assert!(ws.resolve("../etc/passwd").is_err());
         assert!(ws.resolve("ok.txt").is_ok());
+    }
+
+    #[test]
+    fn blocks_prefix_sibling_escape() {
+        let base = std::env::temp_dir().join(format!("harness-pfx-{}", std::process::id()));
+        let root = base.join("ws");
+        let evil = base.join("ws_evil");
+        fs::create_dir_all(&root).unwrap();
+        fs::create_dir_all(&evil).unwrap();
+        fs::write(evil.join("secret.txt"), b"nope").unwrap();
+        let ws = Workspace::new(&root).unwrap();
+        // Absolute path into sibling that shares a string prefix must fail.
+        assert!(ws.resolve(evil.join("secret.txt").to_str().unwrap()).is_err());
+        let _ = fs::remove_dir_all(&base);
     }
 
     fn tempfile_dir() -> PathBuf {
