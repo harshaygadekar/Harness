@@ -171,7 +171,7 @@ Gates port as **policy** into native (not a Python transliteration):
 - [x] Thomas: evidence approve (`12` + review).
 - [x] Jessie: security approve + conditions (above).
 - [x] Mike: impl readiness approve — clear to scaffold `native/` after this Accept.
-- [ ] Alice: confirm native scope Locked with this ADR (scope doc already Proposed → update to Locked).
+- [ ] Alice: confirm native scope Locked with this ADR (scope doc already Accepted → update to Locked).
 - [ ] Zig revisit trigger: if Alice/Thomas lock “same language as fx,” open ADR-005b (Zig 0.16+ in CI + repeat `12` smokes).
 - [ ] Mike: first native benches on `main` before any beat-fx talk.
 
