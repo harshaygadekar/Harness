@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | **Proposed** |
+| **Status** | **Accepted** |
 | **Date** | 2026-09-20 (IST) |
 | **Owners** | Walter (draft), Thomas (evidence `12`), Alice (native scope), Mike (impl after Accept), Jessie (security) |
 | **Related** | [ADR-001](ADR-001-core-loop.md), [ADR-002](ADR-002-model-adapter.md), [ADR-003](ADR-003-protocol-freeze.md), [ADR-004](ADR-004-coding-agent-product.md), [docs/research/12-native-language.md](../research/12-native-language.md) (Thomas evidence), [docs/useful-scope-native.md](../useful-scope-native.md) (Alice native scope). |
@@ -68,7 +68,7 @@ Python harness stays. This is not a rewrite of ADR-001–003 core.
 
 **Rust** for the separate native coding-agent product.
 
-Status remains **Proposed** until Alice / Thomas / Jessie / Mike reviews land and this ADR is Accepted.
+**Accepted** — Rust. Zig remains the measured revisit if product locks fx-stack language parity.
 
 ---
 
@@ -154,15 +154,37 @@ Gates port as **policy** into native (not a Python transliteration):
 
 ---
 
-## Open (reviews before Accept)
 
-- [ ] Alice: native scope approve (`useful-scope-native.md` → Locked with this ADR).
-- [ ] Thomas: evidence approve (`12-native-language.md`).
-- [ ] Jessie: security approve + conditions (policy port; sandbox deferred).
-- [ ] Mike: impl readiness approve; **hold scaffold until Accept**.
+## Conditions (Jessie — bind through first ship)
+
+1. Deny-all default. CLI must not silently Allow the full coding pack on start.
+2. Capability classes explicit: read / write / exec / net / git / secrets.
+3. Workspace path resolve with canonical bounds (no prefix bugs).
+4. Secret scrub on tool errors, model errors, logs, crash dumps.
+5. Approval seam for exec / net / secrets-class before they run.
+6. No “sandboxed like fx” marketing under this ADR.
+7. In-process / dylib plugins = full trust until WASM or process isolation ADR. Document in CLI help.
+8. CI: fail if CLI starts with zero Allow flags and a tool still runs.
+
+## Open (after Accept)
+
+- [x] Thomas: evidence approve (`12` + review).
+- [x] Jessie: security approve + conditions (above).
+- [x] Mike: impl readiness approve — clear to scaffold `native/` after this Accept.
+- [ ] Alice: confirm native scope Locked with this ADR (scope doc already Proposed → update to Locked).
 - [ ] Zig revisit trigger: if Alice/Thomas lock “same language as fx,” open ADR-005b (Zig 0.16+ in CI + repeat `12` smokes).
+- [ ] Mike: first native benches on `main` before any beat-fx talk.
 
----
+## Review checklist
+
+| Reviewer | Status | Notes |
+|----------|--------|-------|
+| Alice (native scope) | pending confirm | `useful-scope-native.md` |
+| Thomas (evidence / `12`) | approve | bake-off + review |
+| Jessie (security) | approve | conditions bind through first ship |
+| Mike (impl readiness) | approve | build after Accept |
+| Walter (draft) | Accepted | Rust selected |
+
 
 ## Implementation plan (Mike — **after** Accept only)
 
@@ -176,27 +198,18 @@ Gates port as **policy** into native (not a Python transliteration):
 
 ---
 
-## Review checklist
-
-| Reviewer | Status | Notes |
-|----------|--------|-------|
-| Alice (native scope) | pending | `useful-scope-native.md` |
-| Thomas (evidence / `12`) | pending | `12-native-language.md` |
-| Jessie (security) | pending | policy port; sandbox later ADR |
-| Mike (impl readiness) | pending | hold scaffold until Accept |
-| Walter (draft) | Proposed | Rust selected |
-
----
-
 ## Consequences
 
 - Native coding-agent track is **Rust-first**, additive under `native/`.
 - Python library product (ADR-004) unchanged; no beat-fx claims on Python axes.
 - Zig remains the strong alternative if product later requires fx stack parity.
 - Marketing: hello/ureq numbers are **floors**, not agent SLAs; fair axes only after Mike measures.
+- Mike is clear to scaffold `native/` under Jessie conditions. No beat-fx claim until benches.
 
 ## Review trail
 
+- [Thomas](ADR-005-thomas-review.md) — Approve Rust; Zig revisit if fx-stack parity
 - [Mike](ADR-005-mike-review.md) — Approve Rust; build after Accept
+- [Jessie](ADR-005-jessie-review.md) — Approve Rust; conditions bind through first ship
 
-_(empty until reviews land)_
+- [Alice](ADR-005-alice-review.md) — Approve Rust; native scope Locked
