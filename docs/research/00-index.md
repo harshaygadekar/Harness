@@ -3,7 +3,7 @@
 **Audience:** Thomas (AI/ML Research Lead), Walter (ADR-001 core loop)  
 **Project goal:** A minimal, useful, fast, extensible agentic harness. Core stays small. Everything else is a plugin.  
 **Date:** 2026-09-20 (IST)  
-**Status:** Research pack updated. DeepSeek Harness is primary design reference. ADR-001/002/003 Accepted. Open-question briefs in `07-open-adr-briefs.md`. Harness comparison vs fx / oh-my-pi / dsh in `08-harness-comparison.md`. Thomas disprove-core pass in `09-disprove-core.md` (keep freeze). Honest fx beat-goals (do **not** claim we beat fx) in `10-fx-beat-goals.md`. Coding-agent product evidence for ADR-004 Candidate A in `11-coding-agent-product.md` (Thomas approve note: `../decisions/ADR-004-thomas-review.md`).
+**Status:** Research pack updated. DeepSeek Harness is primary design reference. ADR-001/002/003 Accepted. Open-question briefs in `07-open-adr-briefs.md`. Harness comparison vs fx / oh-my-pi / dsh in `08-harness-comparison.md`. Thomas disprove-core pass in `09-disprove-core.md` (keep freeze). Honest fx beat-goals (do **not** claim we beat fx) in `10-fx-beat-goals.md`. Coding-agent product evidence for ADR-004 Candidate A in `11-coding-agent-product.md` (Thomas approve note: `../decisions/ADR-004-thomas-review.md`). Native language bake-off for ADR-005 in `12-native-language.md` (**Rust** recommended; Python frozen).
 
 ## Correction (Harsha)
 
@@ -26,6 +26,7 @@ See [06-deepseek-harness.md](06-deepseek-harness.md). Walter drafts ADR-001 from
 | [09-disprove-core.md](09-disprove-core.md) | Phase 2 apps vs tiny core: what works, streaming wall, keep-freeze recommendation |
 | [10-fx-beat-goals.md](10-fx-beat-goals.md) | fx published numbers + fair/unfair axes + Phase 2/3 MUST/SHOULD/STRETCH + bench DoD (do **not** claim we beat fx) |
 | [11-coding-agent-product.md](11-coding-agent-product.md) | Coding-agent product options (A–D); myth fixes; plugins-never-core; ADR-004 Candidate A evidence; publish vs no-claim metrics |
+| [12-native-language.md](12-native-language.md) | Native coding-agent language bake-off (Zig/Rust/C/Go); ADR-005 evidence; measured smokes; `native/` layout; fair fx axes |
 | [sources.md](sources.md) | URLs and papers used |
 
 ## One-paragraph status
@@ -41,3 +42,4 @@ Across OpenAI Agents SDK, Anthropic Claude Agent SDK, LangGraph, PydanticAI, smo
 - DeepSeek Harness docs and GitHub fetched 2026-09-19 (IST); Cordis paper cited via arXiv abs.
 - fx numbers refreshed 2026-09-19 (IST) evening: homepage **6.17 MiB**, AGENTS.md Linux **2 ms** / **7.800 MiB** ceiling, release **v0.0.10**, measured linux-x86_64 binary **11.27 MiB** — see `10-fx-beat-goals.md` and updated `08-harness-comparison.md`.
 - Coding-agent product evidence added 2026-09-20 (IST): `11-coding-agent-product.md` recommends Option A (Python pack + plugins); Option B packaging spike after Accept; Option C native only via separate ADR. ADR-004 **Accepted** (Candidate A).
+- Native language bake-off added 2026-09-20 (IST) evening: `12-native-language.md` recommends **Rust** for ADR-005; Zig runner-up; Go/C rejected; Python tree untouched; no native source yet.

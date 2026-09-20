@@ -5,7 +5,7 @@
 | **Status** | **Accepted** |
 | **Date** | 2026-09-20 (IST) |
 | **Owners** | Walter (draft), Alice (product), Thomas (evidence), Mike (impl after Accept), Jessie (security) |
-| **Related** | [ADR-001](ADR-001-core-loop.md), [ADR-002](ADR-002-model-adapter.md), [ADR-003](ADR-003-protocol-freeze.md), [docs/useful-scope-phase2.md](../useful-scope-phase2.md), [docs/research/10-fx-beat-goals.md](../research/10-fx-beat-goals.md), [docs/research/11-coding-agent-product.md](../research/11-coding-agent-product.md) (Thomas Accept evidence). |
+| **Related** | [ADR-001](ADR-001-core-loop.md), [ADR-002](ADR-002-model-adapter.md), [ADR-003](ADR-003-protocol-freeze.md), [ADR-005](ADR-005-native-language.md) (**Proposed** — native coding-agent language track), [docs/useful-scope-phase2.md](../useful-scope-phase2.md), [docs/research/10-fx-beat-goals.md](../research/10-fx-beat-goals.md), [docs/research/11-coding-agent-product.md](../research/11-coding-agent-product.md) (Thomas Accept evidence). |
 
 ---
 
@@ -140,7 +140,7 @@ Gates **stay**; this ADR does not weaken them:
 
 - Product story = **embeddable Python harness + coding plugins**, not “fx killer.”
 - Marketing and docs must cite fair axes only; never claim 2 ms process start or 6 MiB binary for the Python package.
-- Native / Zig / Rust rewrite requires a **new** ADR (Candidate B track).
+- Native / Zig / Rust rewrite track is **[ADR-005](ADR-005-native-language.md)** (Proposed — Rust selected).
 
 ## Review trail
 

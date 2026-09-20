@@ -139,3 +139,27 @@ URLs and papers used for this research pack. Fetched or searched 2026-09-19 (IST
 | arXiv:2608.25512 abs | Confirmed via search; full PDF fetch timed out once — cite abs URL |
 
 Where fetch failed, claims were limited to search snippets + other live pages, and flagged as provisional in `01-ecosystem-map.md`.
+
+---
+
+## Native language bake-off (`12-native-language.md`) — 2026-09-20 IST
+
+### First-party / competitor
+- https://fx.sh/ (homepage binary size line; fetch 2026-09-20)
+- https://github.com/vercel-labs/fx (README: Zig 0.16+; WASM embed; binary size line)
+- Prior pack measurements: `10-fx-beat-goals.md` (AGENTS.md 7.800 MiB ceiling; Linux 2 ms budgets; measured linux-x86_64 ~11.27 MiB)
+
+### Language size / TLS
+- https://github.com/golang/go/issues/81132 (Go 1.24+ crypto/tls / net/http binary size tables)
+- https://rusty.today/blog/vgi-injector-a-tiny-https-downloader-in-zig/ (secondary: Zig ~460 KB / Rust ~1.2 MB / Go ~4.5 MB HTTPS injector)
+- https://github.com/taliamax/httpget (Rust httpget TLS ~1.3 MB cited in README)
+- https://github.com/roobie/zfetch (Zig zfetch ReleaseSmall 2.5 MB with BoringSSL)
+
+### Plugins / WASM / cross-compile
+- https://docs.wasmtime.dev/wasip2-plugins.html
+- https://github.com/rust-cross/cargo-zigbuild
+- https://tartanllama.xyz/posts/wasm-plugins (WASM component plugins overview)
+
+### Local measured smokes (not committed)
+- Host: Linux x86_64 Debian 13; rustc/cargo 1.85.1; go 1.24.4; gcc 14.2.0; zig **absent**
+- Artifacts under `/tmp/native-bakeoff/` on research host (hello sizes/startups; Go blank-import floors; Rust ureq+rustls 1509912 bytes (~1.44 MiB))
