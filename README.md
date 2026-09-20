@@ -33,6 +33,20 @@ cp .env.example .env
 python examples/gemini_echo.py
 ```
 
+
+## CLI (ADR-004)
+
+```bash
+pip install -e .
+agentic-harness version
+agentic-harness run \
+  --workspace examples/coding_agent/workspace_sample \
+  --allow-coding-pack \
+  --prompt "List files and read notes.txt"
+```
+
+Defaults: **deny-all** tools. Shell only with `--enable-shell`. Not an OS sandbox. See `docs/cli.md`.
+
 ## First demo (must work)
 
 One model adapter + one user-supplied tool + `Runner.run`.
