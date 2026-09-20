@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/harness-core",
     "crates/harness-cli",
+    "crates/harness-tools",
 ]
 
 [workspace.package]
