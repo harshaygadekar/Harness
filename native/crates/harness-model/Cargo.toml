@@ -1,0 +1,18 @@
+[package]
+name = "harness-model"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Model adapters outside core: OpenAI-compat + ScriptedModel (ADR-005)"
+
+[dependencies]
+harness-core = { path = "../harness-core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+ureq = { version = "=2.9.7", default-features = false, features = ["tls", "json"] }
+# Pin url for rustc 1.85 (newer idna/icu need 1.86+)
+url = { version = "=2.5.0" }
+
+[dev-dependencies]
+harness-tools = { path = "../harness-tools" }

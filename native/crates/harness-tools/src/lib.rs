@@ -1,23 +1,29 @@
 //! Min coding tool pack (ADR-005). Outside core.
 //! Workspace-bound paths. Shell is opt-in. Not an OS sandbox.
 
+mod bound;
 mod filesystem;
+mod git;
 mod patch;
 mod search;
 mod shell;
+mod tests_tool;
 mod workspace;
 
 pub use filesystem::{ListFiles, ReadFile, WriteFile};
+pub use git::{GitDiff, GitStatus};
 pub use patch::ApplyPatch;
 pub use search::Search;
 pub use shell::RunShell;
+pub use tests_tool::RunTests;
 pub use workspace::{Workspace, WorkspaceError};
 
 use std::sync::Arc;
 
 use harness_core::Tool;
 
-/// Default pack: list/search/read/write/patch. Shell only if `include_shell`.
+/// Default pack: list/search/read/write/patch/run_tests/git_status/git_diff.
+/// Shell only if `include_shell`.
 pub fn coding_tools(ws: Arc<Workspace>, include_shell: bool) -> Vec<Arc<dyn Tool>> {
     let mut v: Vec<Arc<dyn Tool>> = vec![
         Arc::new(ListFiles { workspace: ws.clone() }),
@@ -25,6 +31,9 @@ pub fn coding_tools(ws: Arc<Workspace>, include_shell: bool) -> Vec<Arc<dyn Tool
         Arc::new(ReadFile { workspace: ws.clone() }),
         Arc::new(WriteFile { workspace: ws.clone() }),
         Arc::new(ApplyPatch { workspace: ws.clone() }),
+        Arc::new(RunTests { workspace: ws.clone() }),
+        Arc::new(GitStatus { workspace: ws.clone() }),
+        Arc::new(GitDiff { workspace: ws.clone() }),
     ];
     if include_shell {
         v.push(Arc::new(RunShell { workspace: ws }));
@@ -39,6 +48,9 @@ pub fn coding_tool_names(include_shell: bool) -> Vec<&'static str> {
         "read_file",
         "write_file",
         "apply_patch",
+        "run_tests",
+        "git_status",
+        "git_diff",
     ];
     if include_shell {
         n.push("run_shell");
@@ -98,5 +110,15 @@ mod tests {
         };
         let err = read.call(&json!({"path":"../etc/passwd"}));
         assert!(err.is_err());
+    }
+
+    #[test]
+    fn coding_names_include_tests_and_git() {
+        let names = coding_tool_names(false);
+        assert!(names.contains(&"run_tests"));
+        assert!(names.contains(&"git_status"));
+        assert!(names.contains(&"git_diff"));
+        assert!(!names.contains(&"run_shell"));
+        assert!(coding_tool_names(true).contains(&"run_shell"));
     }
 }
