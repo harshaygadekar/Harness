@@ -58,3 +58,29 @@ We do **not** copy fx feature-for-feature. We do **not** claim to beat fx until 
 - Growing Python core to chase fx → Alice veto.
 - Shipping native with shell/MCP in the “smallest runtime” without ADR → Alice veto.
 - Claiming beat-fx on marketing µs / binary myths → Alice veto.
+
+---
+
+## Phase 3 — vertical slice (2026-09-21)
+
+**Milestone:** first **real** native coding loop — not more scaffold docs.
+
+### Must work end-to-end
+
+USER TASK → MODEL → TOOLS → SEARCH/READ → EDIT → TEST → FIX → SUCCESS
+
+on a **real fixture repo with real bugs** (Thomas). Fake-model CI stays for micro benches; live model is required for the slice demo.
+
+### Product success (this phase)
+
+1. One OpenAI-compatible adapter (not five providers). Outside core.
+2. Recorded run: model/tool events + final diff + timings.
+3. `harness replay <run>` without a live model when responses are recorded.
+4. Published raw metrics (tool waste, tokens, wall time) — not one vanity score.
+5. Deny-all + shell opt-in + workspace bind still hold (Jessie).
+
+### Still out
+
+- Feature race with fx / MCP-before-loop / giant sandbox
+- Beat-fx marketing
+- Growing Python Harness core
