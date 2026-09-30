@@ -88,11 +88,20 @@ impl Runner {
             let response = model.complete(&messages, &tool_specs);
             let msg = response.message;
             let calls = msg.tool_calls.clone();
+            let model_error = msg
+                .content
+                .as_deref()
+                .unwrap_or("")
+                .starts_with("MODEL_ERROR:");
             events.push(RunEvent::model_response(msg.content.clone(), calls.clone()));
             messages.push(msg);
 
             if calls.is_empty() {
-                let status = RunStatus::Succeeded;
+                let status = if model_error {
+                    RunStatus::Failed
+                } else {
+                    RunStatus::Succeeded
+                };
                 events.push(RunEvent::done(status.as_str(), step + 1));
                 return RunResult {
                     status,

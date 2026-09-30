@@ -14,6 +14,10 @@ pub struct ToolCall {
     pub id: String,
     pub name: String,
     pub arguments: serde_json::Value,
+    /// Provider-specific metadata (e.g. Gemini `extra_content` / thought_signature).
+    /// Must round-trip on OpenAI-compatible adapters or tool turns fail.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extra_content: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

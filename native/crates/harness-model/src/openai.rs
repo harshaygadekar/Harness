@@ -98,8 +98,17 @@ impl OpenAiCompat {
             .post(&url)
             .set("Authorization", &format!("Bearer {}", self.api_key))
             .set("Content-Type", "application/json")
-            .send_json(&body)
-            .map_err(|e| OpenAiError::Http(e.to_string()))?;
+            .send_json(&body);
+
+        let resp = match resp {
+            Ok(r) => r,
+            Err(ureq::Error::Status(code, r)) => {
+                let body = r.into_string().unwrap_or_default();
+                let body = body.chars().take(400).collect::<String>();
+                return Err(OpenAiError::Http(format!("status {code}: {body}")));
+            }
+            Err(e) => return Err(OpenAiError::Http(e.to_string())),
+        };
 
         let parsed: ChatResponse = resp
             .into_json()
@@ -163,6 +172,9 @@ struct OaiToolCall {
     #[serde(rename = "type")]
     type_: String,
     function: OaiFunctionCall,
+    /// Gemini (and some providers) require this on subsequent turns.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    extra_content: Option<serde_json::Value>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -226,6 +238,7 @@ fn to_openai_message(m: &Message) -> OaiMessage {
                         name: c.name.clone(),
                         arguments: c.arguments.to_string(),
                     },
+                    extra_content: c.extra_content.clone(),
                 })
                 .collect(),
         )
@@ -257,6 +270,7 @@ fn from_openai_message(m: OaiMessage) -> Message {
                 id: c.id,
                 name: c.function.name,
                 arguments,
+                extra_content: c.extra_content,
             }
         })
         .collect();

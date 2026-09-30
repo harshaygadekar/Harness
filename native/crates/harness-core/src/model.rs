@@ -39,6 +39,7 @@ impl ModelClient for FakeModel {
                         id: "1".into(),
                         name: "echo".into(),
                         arguments: serde_json::json!({"text": "hi"}),
+                        extra_content: None,
                     }],
                     tool_call_id: None,
                     name: None,

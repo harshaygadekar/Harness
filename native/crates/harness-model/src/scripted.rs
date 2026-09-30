@@ -67,6 +67,7 @@ fn tc(id: &str, name: &str, args: serde_json::Value) -> ToolCall {
         id: id.into(),
         name: name.into(),
         arguments: args,
+        extra_content: None,
     }
 }
 
