@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-harness.local/native/benchmarks/phase3_schema.json",
+  "title": "Phase3RunMetrics",
+  "description": "Per-run tool-efficiency metrics for native Phase 3. Raw counters only; no single score. Aligns with docs/research/14-phase3-metrics.md and 13-tool-efficiency.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "task_id",
+    "fixture_path",
+    "fixture_version",
+    "commit_sha",
+    "machine_class",
+    "model_mode",
+    "measured_at",
+    "exit_status",
+    "task_success",
+    "run_ok",
+    "total_tool_calls",
+    "tool_calls_success",
+    "tool_calls_fail",
+    "gate_denies",
+    "tool_errors",
+    "unnecessary_tool_calls",
+    "redundant_reads",
+    "redundant_searches",
+    "duplicate_tool_calls",
+    "useful_actions",
+    "writes",
+    "tests_run",
+    "files_read",
+    "files_modified",
+    "model_turns",
+    "tokens_prompt",
+    "tokens_completion",
+    "tokens_total",
+    "tool_schema_bytes",
+    "context_bytes",
+    "wall_time_ms",
+    "time_to_first_useful_action_ms",
+    "time_to_success_ms",
+    "source_run_jsonl",
+    "metrics_source"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "phase3.v1"
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Category + fixture name, e.g. T1/broken_calc"
+    },
+    "fixture_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "fixture_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "commit_sha": {
+      "type": "string",
+      "minLength": 1
+    },
+    "machine_class": {
+      "type": "string",
+      "minLength": 1
+    },
+    "model_mode": {
+      "type": "string",
+      "enum": ["fake", "scripted", "live", "other"]
+    },
+    "measured_at": {
+      "type": "string",
+      "minLength": 1,
+      "description": "ISO-8601 timestamp"
+    },
+    "exit_status": {
+      "type": "string",
+      "enum": ["success", "fail", "timeout", "max_turns"]
+    },
+    "task_success": {
+      "type": "boolean"
+    },
+    "run_ok": {
+      "type": "boolean",
+      "description": "Harness finished without crash; independent of task_success"
+    },
+    "total_tool_calls": { "$ref": "#/$defs/non_negative_int" },
+    "tool_calls_success": { "$ref": "#/$defs/non_negative_int" },
+    "tool_calls_fail": { "$ref": "#/$defs/non_negative_int" },
+    "gate_denies": { "$ref": "#/$defs/non_negative_int" },
+    "tool_errors": { "$ref": "#/$defs/non_negative_int" },
+    "unnecessary_tool_calls": { "$ref": "#/$defs/int_or_unknown" },
+    "redundant_reads": { "$ref": "#/$defs/int_or_unknown" },
+    "redundant_searches": { "$ref": "#/$defs/int_or_unknown" },
+    "duplicate_tool_calls": { "$ref": "#/$defs/int_or_unknown" },
+    "useful_actions": { "$ref": "#/$defs/int_or_unknown" },
+    "writes": { "$ref": "#/$defs/non_negative_int" },
+    "tests_run": { "$ref": "#/$defs/non_negative_int" },
+    "files_read": { "$ref": "#/$defs/non_negative_int" },
+    "files_modified": { "$ref": "#/$defs/non_negative_int" },
+    "files_read_paths": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "files_modified_paths": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "model_turns": { "$ref": "#/$defs/non_negative_int" },
+    "tokens_prompt": { "$ref": "#/$defs/int_or_unknown" },
+    "tokens_completion": { "$ref": "#/$defs/int_or_unknown" },
+    "tokens_total": { "$ref": "#/$defs/int_or_unknown" },
+    "tool_schema_bytes": { "$ref": "#/$defs/int_or_unknown" },
+    "context_bytes": { "$ref": "#/$defs/int_or_unknown" },
+    "wall_time_ms": { "$ref": "#/$defs/non_negative_int" },
+    "time_to_first_useful_action_ms": { "$ref": "#/$defs/int_or_unknown" },
+    "time_to_success_ms": { "$ref": "#/$defs/int_or_unknown" },
+    "source_run_jsonl": {
+      "type": "string",
+      "minLength": 1
+    },
+    "metrics_source": {
+      "type": "string",
+      "minLength": 1,
+      "description": "e.g. replay_aggregate"
+    },
+    "notes": {
+      "type": "string"
+    },
+    "rates": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Optional derived rates; never replace raw counters; not a single score",
+      "properties": {
+        "unnecessary_rate": { "type": "number", "minimum": 0 },
+        "redundant_read_rate": { "type": "number", "minimum": 0 },
+        "fail_rate": { "type": "number", "minimum": 0 },
+        "useful_actions_per_turn": { "type": "number", "minimum": 0 }
+      }
+    }
+  },
+  "$defs": {
+    "non_negative_int": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "int_or_unknown": {
+      "oneOf": [
+        { "type": "integer", "minimum": 0 },
+        { "type": "string", "const": "unknown" }
+      ]
+    }
+  }
+}

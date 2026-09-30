@@ -1,0 +1,11 @@
+[package]
+name = "broken_calc"
+version = "0.1.0"
+edition = "2021"
+description = "Tiny calculator crate with intentional math edge-case bugs (Phase 3 T1 fixture)"
+
+# Independent package: do not join parent native/ workspace.
+[workspace]
+
+[lib]
+path = "src/lib.rs"
