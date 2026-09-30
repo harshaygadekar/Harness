@@ -23,12 +23,24 @@ pub enum OpenAiError {
     Parse(String),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct OpenAiCompat {
     api_key: String,
     base_url: String,
     model: String,
     timeout: Duration,
+}
+
+impl std::fmt::Debug for OpenAiCompat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Jessie: never print the API key.
+        f.debug_struct("OpenAiCompat")
+            .field("api_key", &"[redacted]")
+            .field("base_url", &self.base_url)
+            .field("model", &self.model)
+            .field("timeout", &self.timeout)
+            .finish()
+    }
 }
 
 impl OpenAiCompat {

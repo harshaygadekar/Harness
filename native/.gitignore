@@ -1,3 +1,7 @@
 **/*.rs.bk
 /target/
 fixtures/*/target/
+
+# Local ask --record output (may hold tool text; never commit keys)
+/records/
+**/run.jsonl
