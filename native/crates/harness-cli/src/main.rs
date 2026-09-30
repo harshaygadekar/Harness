@@ -2,6 +2,8 @@
 //! Jessie: deny-all default; workspace bind; shell needs explicit allow.
 //! Not an OS sandbox.
 
+mod metrics;
+
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
@@ -15,6 +17,7 @@ use harness_core::{
 };
 use harness_model::{broken_add_fix_script, OpenAiCompat};
 use harness_tools::{coding_tool_names, coding_tools, Workspace};
+use metrics::{aggregate, detect_commit_sha, write_metrics, MetricsMeta};
 use serde_json::json;
 
 #[derive(Parser, Debug)]
@@ -64,10 +67,24 @@ enum Cmd {
         #[arg(long, default_value_t = 16)]
         max_steps: usize,
     },
-    /// Dump / validate a recorded run.jsonl (no live model)
+    /// Dump / validate a recorded run.jsonl; optionally emit metrics.json
     Replay {
         /// Path to run.jsonl
         run: PathBuf,
+        /// Write Phase 3 metrics.json (default: beside run.jsonl)
+        #[arg(long)]
+        metrics_out: Option<PathBuf>,
+        /// Skip writing metrics.json
+        #[arg(long, default_value_t = false)]
+        no_metrics: bool,
+        #[arg(long, default_value = "unknown")]
+        task_id: String,
+        #[arg(long, default_value = "unknown")]
+        fixture_path: String,
+        #[arg(long, default_value = "0.1.0")]
+        fixture_version: String,
+        #[arg(long, default_value = "other")]
+        model_mode: String,
     },
 }
 
@@ -106,7 +123,23 @@ fn main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
-        Cmd::Replay { run } => match replay_cmd(&run) {
+        Cmd::Replay {
+            run,
+            metrics_out,
+            no_metrics,
+            task_id,
+            fixture_path,
+            fixture_version,
+            model_mode,
+        } => match replay_cmd(
+            &run,
+            metrics_out.as_deref(),
+            no_metrics,
+            &task_id,
+            &fixture_path,
+            &fixture_version,
+            &model_mode,
+        ) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
                 eprintln!("error: {e}");
@@ -274,9 +307,22 @@ fn ask_cmd(
         None => workspace.join(".harness").join("runs"),
     };
     let path = write_events(&record_dir, &result.events)?;
+    let metrics_path = record_dir.join("metrics.json");
+    let meta = MetricsMeta {
+        task_id: format!("ask/{model_name}"),
+        fixture_path: workspace.display().to_string(),
+        fixture_version: "0.1.0".into(),
+        model_mode: model_name.to_string(),
+        commit_sha: detect_commit_sha(),
+        machine_class: format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH),
+        source_run_jsonl: path.display().to_string(),
+    };
+    let metrics = aggregate(&result.events, &meta);
+    write_metrics(&metrics_path, &metrics)?;
     println!("status={:?}", result.status);
     println!("steps={}", result.steps);
     println!("recorded={}", path.display());
+    println!("metrics={}", metrics_path.display());
     if let Some(last) = result.messages.last() {
         if let Some(c) = &last.content {
             println!("{c}");
@@ -299,10 +345,19 @@ fn ask_cmd(
     })
 }
 
-fn replay_cmd(run: &Path) -> Result<(), String> {
+fn replay_cmd(
+    run: &Path,
+    metrics_out: Option<&Path>,
+    no_metrics: bool,
+    task_id: &str,
+    fixture_path: &str,
+    fixture_version: &str,
+    model_mode: &str,
+) -> Result<(), String> {
     let f = File::open(run).map_err(|e| format!("open: {e}"))?;
     let reader = BufReader::new(f);
     let mut n = 0usize;
+    let mut events: Vec<RunEvent> = Vec::new();
     for (i, line) in reader.lines().enumerate() {
         let line = line.map_err(|e| format!("read line {}: {e}", i + 1))?;
         if line.trim().is_empty() {
@@ -351,7 +406,30 @@ fn replay_cmd(run: &Path) -> Result<(), String> {
                 steps,
             } => println!("[{ts_ms}] done status={status} steps={steps}"),
         }
+        events.push(ev);
     }
     println!("validated {n} events");
+
+    if !no_metrics {
+        let out = metrics_out
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| {
+                run.parent()
+                    .unwrap_or_else(|| Path::new("."))
+                    .join("metrics.json")
+            });
+        let meta = MetricsMeta {
+            task_id: task_id.to_string(),
+            fixture_path: fixture_path.to_string(),
+            fixture_version: fixture_version.to_string(),
+            model_mode: model_mode.to_string(),
+            commit_sha: detect_commit_sha(),
+            machine_class: format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH),
+            source_run_jsonl: run.display().to_string(),
+        };
+        let metrics = aggregate(&events, &meta);
+        write_metrics(&out, &metrics)?;
+        println!("metrics={}", out.display());
+    }
     Ok(())
 }

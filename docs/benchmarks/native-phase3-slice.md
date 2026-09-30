@@ -41,7 +41,11 @@ cp -a fixtures/broken_add/. "$FIX/"
   --prompt "fix the failing tests" \
   --record /tmp/harness-run
 
-./target/release/harness replay /tmp/harness-run/run.jsonl
+./target/release/harness replay /tmp/harness-run/run.jsonl \
+  --task-id T1/broken_add \
+  --fixture-path native/fixtures/broken_add \
+  --model-mode scripted
+# writes /tmp/harness-run/metrics.json (phase3.v1); use --no-metrics to skip
 cargo test --manifest-path "$FIX/Cargo.toml" -q
 ```
 

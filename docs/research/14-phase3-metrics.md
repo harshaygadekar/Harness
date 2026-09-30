@@ -2,7 +2,7 @@
 
 **Audience:** Mike (native replay + emit), Thomas (Research Lead), Tech Team  
 **Date:** 2026-09-21 (IST)  
-**Status:** Schema contract for Phase 3. No harness-core loop change in this drop. No beat-fx claim.  
+**Status:** Schema contract for Phase 3. CLI `harness replay` (and `ask --record`) emit `metrics.json` via `replay_aggregate_v1`. No harness-core loop change. No beat-fx claim.  
 **Parent method:** [`13-tool-efficiency.md`](13-tool-efficiency.md) (M1–M9, T1–T4, publish DoD).  
 **Machine schema:** [`../../native/benchmarks/phase3_schema.json`](../../native/benchmarks/phase3_schema.json)  
 **Rule:** ASD-STE100. Mark **measured** vs **derived** vs **unknown**. Emit raw fields. Do **not** collapse into one score.
@@ -123,10 +123,10 @@ Rates are supplemental. Raw counters remain required.
 
 ---
 
-## 4. How Mike wires the schema
+## 4. How the schema is wired (CLI)
 
-1. Run the agent with `--record <dir>` so events land in `<dir>/run.jsonl` (`RunEvent` lines).
-2. After the run (or in `harness replay`), aggregate events:
+1. Run the agent with `--record <dir>` so events land in `<dir>/run.jsonl` (`RunEvent` lines). `ask` also writes `<dir>/metrics.json`.
+2. Or run `harness replay <run.jsonl> --task-id … --fixture-path … --model-mode …` to aggregate events:
    - Count `tool_call` / `tool_result` → tool fields.
    - Count `model_response` → `model_turns`.
    - Diff `ts_ms` of first event vs `done` → `wall_time_ms`.
