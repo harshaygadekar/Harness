@@ -43,6 +43,19 @@ impl std::fmt::Debug for OpenAiCompat {
     }
 }
 
+
+fn scrub_http_body(s: &str) -> String {
+    // Jessie: truncate + redact common key prefixes from provider error bodies.
+    let mut out: String = s.chars().take(400).collect();
+    for pat in ["AIza", "sk-", "Bearer "] {
+        if let Some(i) = out.find(pat) {
+            let end = (i + pat.len() + 8).min(out.len());
+            out.replace_range(i..end, &format!("{pat}[redacted]"));
+        }
+    }
+    out
+}
+
 impl OpenAiCompat {
     pub fn from_env() -> Result<Self, OpenAiError> {
         let api_key = std::env::var("HARNESS_API_KEY")
@@ -104,7 +117,7 @@ impl OpenAiCompat {
             Ok(r) => r,
             Err(ureq::Error::Status(code, r)) => {
                 let body = r.into_string().unwrap_or_default();
-                let body = body.chars().take(400).collect::<String>();
+                let body = scrub_http_body(&body);
                 return Err(OpenAiError::Http(format!("status {code}: {body}")));
             }
             Err(e) => return Err(OpenAiError::Http(e.to_string())),
