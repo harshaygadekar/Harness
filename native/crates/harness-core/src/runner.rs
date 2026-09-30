@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::events::{bound_observation, RunEvent};
 use crate::gate::{AllowDecision, ToolGate};
 use crate::messages::{Message, Role};
 use crate::model::ModelClient;
-use crate::tool::Tool;
+use crate::tool::{Tool, ToolSpec};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RunStatus {
@@ -13,11 +14,22 @@ pub enum RunStatus {
     MaxSteps,
 }
 
+impl RunStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Succeeded => "Succeeded",
+            Self::Failed => "Failed",
+            Self::MaxSteps => "MaxSteps",
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct RunResult {
     pub status: RunStatus,
     pub messages: Vec<Message>,
     pub steps: usize,
+    pub events: Vec<RunEvent>,
 }
 
 pub struct RunConfig {
@@ -47,12 +59,21 @@ impl Runner {
         self.tools.insert(tool.name().to_string(), tool);
     }
 
+    pub fn tool_specs(&self) -> Vec<ToolSpec> {
+        let mut specs: Vec<ToolSpec> = self.tools.values().map(|t| t.spec()).collect();
+        specs.sort_by(|a, b| a.name.cmp(&b.name));
+        specs
+    }
+
     pub fn run(
         &self,
         model: &mut dyn ModelClient,
         user: &str,
         config: RunConfig,
     ) -> RunResult {
+        let mut events = Vec::new();
+        events.push(RunEvent::state_change("running"));
+
         let mut messages = vec![Message {
             role: Role::User,
             content: Some(user.to_string()),
@@ -60,43 +81,66 @@ impl Runner {
             tool_call_id: None,
             name: None,
         }];
-        let tool_names: Vec<String> = self.tools.keys().cloned().collect();
+        let tool_specs = self.tool_specs();
 
         for step in 0..config.max_steps {
-            let response = model.complete(&messages, &tool_names);
+            events.push(RunEvent::model_request(messages.len(), tool_specs.len()));
+            let response = model.complete(&messages, &tool_specs);
             let msg = response.message;
             let calls = msg.tool_calls.clone();
+            events.push(RunEvent::model_response(msg.content.clone(), calls.clone()));
             messages.push(msg);
 
             if calls.is_empty() {
+                let status = RunStatus::Succeeded;
+                events.push(RunEvent::done(status.as_str(), step + 1));
                 return RunResult {
-                    status: RunStatus::Succeeded,
+                    status,
                     messages,
                     steps: step + 1,
+                    events,
                 };
             }
 
             for call in calls {
+                events.push(RunEvent::tool_call(
+                    call.id.clone(),
+                    call.name.clone(),
+                    call.arguments.clone(),
+                ));
                 match self.gate.decide(&call.name) {
                     AllowDecision::Deny { reason } => {
+                        let content = format!("DENIED: {reason}");
+                        events.push(RunEvent::tool_result(
+                            call.id.clone(),
+                            call.name.clone(),
+                            content.clone(),
+                            false,
+                        ));
                         messages.push(Message {
                             role: Role::Tool,
-                            content: Some(format!("DENIED: {reason}")),
+                            content: Some(content),
                             tool_calls: vec![],
                             tool_call_id: Some(call.id),
                             name: Some(call.name),
                         });
                     }
                     AllowDecision::Allow => {
-                        let content = match self.tools.get(&call.name) {
-                            None => format!("ERROR: unknown tool {}", call.name),
+                        let (content, ok) = match self.tools.get(&call.name) {
+                            None => (format!("ERROR: unknown tool {}", call.name), false),
                             Some(tool) => match tool.call(&call.arguments) {
-                                Ok(r) => r.content,
-                                Err(e) => format!("ERROR: {e}"),
+                                Ok(r) => (r.content, r.ok),
+                                Err(e) => (format!("ERROR: {e}"), false),
                             },
                         };
-                        // light scrub: never echo obvious key prefixes in tool text
-                        let content = scrub_secrets(&content);
+                        // Scrub then bound observation size (Jessie).
+                        let content = bound_observation(&scrub_secrets(&content));
+                        events.push(RunEvent::tool_result(
+                            call.id.clone(),
+                            call.name.clone(),
+                            content.clone(),
+                            ok,
+                        ));
                         messages.push(Message {
                             role: Role::Tool,
                             content: Some(content),
@@ -109,10 +153,13 @@ impl Runner {
             }
         }
 
+        let status = RunStatus::MaxSteps;
+        events.push(RunEvent::done(status.as_str(), config.max_steps));
         RunResult {
-            status: RunStatus::MaxSteps,
+            status,
             messages,
             steps: config.max_steps,
+            events,
         }
     }
 }
@@ -159,6 +206,11 @@ mod tests {
             .messages
             .iter()
             .any(|m| m.content.as_deref().unwrap_or("").contains("DENIED")));
+        assert!(!result.events.is_empty());
+        assert!(result
+            .events
+            .iter()
+            .any(|e| matches!(e, RunEvent::Done { .. })));
     }
 
     #[test]
@@ -183,5 +235,9 @@ mod tests {
             .messages
             .iter()
             .any(|m| m.role == Role::Tool && m.content.as_deref() == Some("hi")));
+        assert!(result.events.iter().any(|e| matches!(
+            e,
+            RunEvent::ToolCall { name, .. } if name == "echo"
+        )));
     }
 }

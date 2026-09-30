@@ -4,6 +4,7 @@ members = [
     "crates/harness-core",
     "crates/harness-cli",
     "crates/harness-tools",
+    "crates/harness-model",
 ]
 
 [workspace.package]

@@ -1,0 +1,10 @@
+[package]
+name = "broken_add"
+version = "0.1.0"
+edition = "2021"
+
+# Independent package: do not join parent native/ workspace.
+[workspace]
+
+[lib]
+path = "src/lib.rs"

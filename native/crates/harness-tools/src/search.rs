@@ -5,6 +5,7 @@ use harness_core::{Tool, ToolError, ToolResult};
 use regex::RegexBuilder;
 use serde_json::{json, Value};
 
+use crate::bound::bound_excerpt;
 use crate::workspace::Workspace;
 
 pub struct Search {
@@ -56,12 +57,13 @@ impl Tool for Search {
         let mut hits = Vec::new();
         walk(&root, self.workspace.root(), &re, &mut hits, 50)
             .map_err(|e| ToolError::Failed(e.to_string()))?;
+        let raw = if hits.is_empty() {
+            "(no hits)".into()
+        } else {
+            hits.join("\n")
+        };
         Ok(ToolResult {
-            content: if hits.is_empty() {
-                "(no hits)".into()
-            } else {
-                hits.join("\n")
-            },
+            content: bound_excerpt(&raw, 16 * 1024),
             ok: true,
         })
     }

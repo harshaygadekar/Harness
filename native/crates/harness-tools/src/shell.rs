@@ -5,6 +5,7 @@ use std::time::Duration;
 use harness_core::{Tool, ToolError, ToolResult};
 use serde_json::{json, Value};
 
+use crate::bound::bound_excerpt;
 use crate::workspace::Workspace;
 
 /// Opt-in shell. Soft deny list. Not an OS sandbox (Jessie).
@@ -80,10 +81,7 @@ impl Tool for RunShell {
             text.push_str("\n--- stderr ---\n");
             text.push_str(&String::from_utf8_lossy(&out.stderr));
         }
-        if text.len() > 32 * 1024 {
-            text.truncate(32 * 1024);
-            text.push_str("\n…[truncated]");
-        }
+        text = bound_excerpt(&text, 16 * 1024);
         text.push_str(&format!("\n[exit {}]", out.status.code().unwrap_or(-1)));
         Ok(ToolResult {
             content: text,

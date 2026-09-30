@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
 
@@ -13,11 +14,27 @@ pub struct ToolResult {
     pub ok: bool,
 }
 
+/// Spec passed to the model (name/description/JSON Schema parameters).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolSpec {
+    pub name: String,
+    pub description: String,
+    pub parameters: Value,
+}
+
 pub trait Tool: Send + Sync {
     fn name(&self) -> &str;
     fn description(&self) -> &str;
     fn parameters(&self) -> Value;
     fn call(&self, args: &Value) -> Result<ToolResult, ToolError>;
+
+    fn spec(&self) -> ToolSpec {
+        ToolSpec {
+            name: self.name().to_string(),
+            description: self.description().to_string(),
+            parameters: self.parameters(),
+        }
+    }
 }
 
 pub struct FunctionTool<F>

@@ -1,11 +1,13 @@
 use crate::messages::{Message, ToolCall};
+use crate::tool::ToolSpec;
 
+#[derive(Debug, Clone)]
 pub struct ModelResponse {
     pub message: Message,
 }
 
 pub trait ModelClient: Send + Sync {
-    fn complete(&mut self, messages: &[Message], tool_names: &[String]) -> ModelResponse;
+    fn complete(&mut self, messages: &[Message], tools: &[ToolSpec]) -> ModelResponse;
 }
 
 /// Deterministic fake model for benches / CI (no network).
@@ -26,9 +28,9 @@ impl Default for FakeModel {
 }
 
 impl ModelClient for FakeModel {
-    fn complete(&mut self, _messages: &[Message], tool_names: &[String]) -> ModelResponse {
+    fn complete(&mut self, _messages: &[Message], tools: &[ToolSpec]) -> ModelResponse {
         self.step += 1;
-        if self.step == 1 && tool_names.iter().any(|n| n == "echo") {
+        if self.step == 1 && tools.iter().any(|t| t.name == "echo") {
             return ModelResponse {
                 message: Message {
                     role: crate::messages::Role::Assistant,
