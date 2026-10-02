@@ -1,0 +1,14 @@
+{
+  "task_id": "T1/broken_calc",
+  "category": "bug_fix",
+  "fixture_path": "native/fixtures/broken_calc",
+  "agent_prompt_file": "TASK.md",
+  "success_file": "SUCCESS.md",
+  "oracle_file": "ORACLE.md",
+  "success_command": "cargo test",
+  "requires_inspect": true,
+  "leaks_implementation_in_prompt": false,
+  "phase": 4,
+  "status": "ready_for_freeze",
+  "fixture_content_sha256": "e72e0c456c320fe3b1032db6dc9f812c31e70c57a0af52a97b228f9b81bcbc19"
+}

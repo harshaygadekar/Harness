@@ -3,7 +3,7 @@
 **Audience:** Thomas (AI/ML Research Lead), Walter (ADR-001 core loop)  
 **Project goal:** A minimal, useful, fast, extensible agentic harness. Core stays small. Everything else is a plugin.  
 **Date:** 2026-09-20 (IST)  
-**Status:** Research pack updated. DeepSeek Harness is primary design reference. ADR-001/002/003 Accepted. Open-question briefs in `07-open-adr-briefs.md`. Harness comparison vs fx / oh-my-pi / dsh in `08-harness-comparison.md`. Thomas disprove-core pass in `09-disprove-core.md` (keep freeze). Honest fx beat-goals (do **not** claim we beat fx) in `10-fx-beat-goals.md`. Coding-agent product evidence for ADR-004 Candidate A in `11-coding-agent-product.md` (Thomas approve note: `../decisions/ADR-004-thomas-review.md`). Native language bake-off for ADR-005 in `12-native-language.md` (**Rust** Accepted). Tool-efficiency method for Mike’s native benches in `13-tool-efficiency.md` (no beat-fx without DoD). Phase 3 per-run metric schema in `14-phase3-metrics.md` + `native/benchmarks/phase3_schema.json` (Thomas; fixture `native/fixtures/broken_calc/`).
+**Status:** Research pack updated. DeepSeek Harness is primary design reference. ADR-001/002/003 Accepted. Open-question briefs in `07-open-adr-briefs.md`. Harness comparison vs fx / oh-my-pi / dsh in `08-harness-comparison.md`. Thomas disprove-core pass in `09-disprove-core.md` (keep freeze). Honest fx beat-goals (do **not** claim we beat fx) in `10-fx-beat-goals.md`. Coding-agent product evidence for ADR-004 Candidate A in `11-coding-agent-product.md` (Thomas approve note: `../decisions/ADR-004-thomas-review.md`). Native language bake-off for ADR-005 in `12-native-language.md` (**Rust** Accepted). Tool-efficiency method for Mike’s native benches in `13-tool-efficiency.md` (no beat-fx without DoD). Phase 3 per-run metric schema in `14-phase3-metrics.md`. Phase 4 first fair bench method in `15-phase4-first-bench.md` + `../benchmarks/first-head-to-head.md` + `native/benchmarks/phase3_schema.json` (Thomas; fixture `native/fixtures/broken_calc/`).
 
 ## Correction (Harsha)
 
@@ -29,6 +29,7 @@ See [06-deepseek-harness.md](06-deepseek-harness.md). Walter drafts ADR-001 from
 | [12-native-language.md](12-native-language.md) | Native coding-agent language bake-off (Zig/Rust/C/Go); ADR-005 evidence; measured smokes; `native/` layout; fair fx axes |
 | [13-tool-efficiency.md](13-tool-efficiency.md) | Tool-efficiency metrics for native track after ADR-005; waste/useful counters; T1–T4 tasks; fake-model CI; publish DoD |
 | [14-phase3-metrics.md](14-phase3-metrics.md) | Phase 3 per-run metric JSON fields; raw publish rule; no single score; wires to `native/benchmarks/phase3_schema.json` |
+| [15-phase4-first-bench.md](15-phase4-first-bench.md) | Phase 4 first fair head-to-head method; Track A/B split; task pack pointer; no beat-fx |
 | [sources.md](sources.md) | URLs and papers used |
 
 ## One-paragraph status

@@ -5,3 +5,6 @@ fixtures/*/target/
 # Local ask --record output (may hold tool text; never commit keys)
 /records/
 **/run.jsonl
+
+# Phase 4 head-to-head raw runs (keep meta samples if needed)
+benchmarks/head_to_head/runs/
