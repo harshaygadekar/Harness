@@ -15,23 +15,40 @@ cargo build --release -p harness-cli
 ./target/release/harness run --prompt "hi" --allow coding,shell --workspace .
 ```
 
-## Phase 3 — ask / replay / scripted fixture
+## Phase 3 / 4 — ask / replay / scripted fixtures
 
 ```bash
-# Scripted vertical slice (copies recommended; see docs/benchmarks/native-phase3-slice.md)
+# Scripted vertical slice (copies recommended; see docs/benchmarks/native-phase3-slice.md
+# and docs/benchmarks/first-head-to-head.md §6)
+
+# broken_add (Phase 3 smoke; default when --script omitted and workspace is not broken_calc)
 FIX=$(mktemp -d)
 cp -a fixtures/broken_add/. "$FIX/"
 ./target/release/harness ask \
   --model scripted \
+  --script broken_add \
   --allow coding,shell \
   --workspace "$FIX" \
   --prompt "fix the failing tests" \
   --record /tmp/harness-run
 
-./target/release/harness replay /tmp/harness-run/run.jsonl
+# broken_calc (Phase 4 Track A / T1) — detect via workspace path/Cargo.toml name, or --script
+FIX=$(mktemp -d)
+cp -a fixtures/broken_calc/. "$FIX/"
+./target/release/harness ask \
+  --model scripted \
+  --script broken_calc \
+  --allow coding,shell \
+  --workspace "$FIX" \
+  --prompt "fix the failing tests" \
+  --record /tmp/harness-t1-trackA
+# Equivalent: omit --script when workspace path or Cargo.toml name contains broken_calc
+
+./target/release/harness replay /tmp/harness-t1-trackA/run.jsonl
 
 # Models: fake (default) | scripted | openai
 # openai needs HARNESS_API_KEY|OPENAI_API_KEY, HARNESS_MODEL, optional HARNESS_BASE_URL
+# --script: broken_add | broken_calc (aliases add | calc); default broken_add for back-compat
 ```
 
 ## Crates
@@ -63,4 +80,4 @@ Phase 3 notes: `docs/benchmarks/native-phase3-slice.md`. No beat-fx claim.
 
 ## Status
 
-Phase 3 vertical slice: scripted MODEL→TOOLS→EDIT→TEST on `fixtures/broken_add`.
+Phase 3/4: scripted MODEL→TOOLS→EDIT→TEST on `fixtures/broken_add` and `fixtures/broken_calc` (Track A runtime).

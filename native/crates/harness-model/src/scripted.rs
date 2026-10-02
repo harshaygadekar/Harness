@@ -101,6 +101,57 @@ pub fn broken_add_fix_script() -> ScriptedModel {
     )
 }
 
+
+/// Scripted sequence for `fixtures/broken_calc` (Track A / T1):
+/// search → read percent + midpoint → apply_patch both → run_tests → success text.
+/// Avoids decoys under docs/, notes/, data/, tax.rs, noise.rs.
+pub fn broken_calc_fix_script() -> ScriptedModel {
+    ScriptedModel::from_tool_then_text(
+        vec![
+            vec![tc(
+                "1",
+                "search",
+                serde_json::json!({"pattern": "fn percent", "path": "src"}),
+            )],
+            vec![tc(
+                "2",
+                "search",
+                serde_json::json!({"pattern": "fn midpoint", "path": "src"}),
+            )],
+            vec![tc(
+                "3",
+                "read_file",
+                serde_json::json!({"path": "src/percent.rs"}),
+            )],
+            vec![tc(
+                "4",
+                "read_file",
+                serde_json::json!({"path": "src/midpoint.rs"}),
+            )],
+            vec![tc(
+                "5",
+                "apply_patch",
+                serde_json::json!({
+                    "path": "src/percent.rs",
+                    "old_string": "    if whole == 0 {\n        // BUG: should return None\n        return Some(0);\n    }\n    // BUG: truncates toward zero; no half-away rounding\n    Some((part * 100) / whole)",
+                    "new_string": "    if whole == 0 {\n        return None;\n    }\n    Some(((f64::from(part) * 100.0) / f64::from(whole)).round() as i32)"
+                }),
+            )],
+            vec![tc(
+                "6",
+                "apply_patch",
+                serde_json::json!({
+                    "path": "src/midpoint.rs",
+                    "old_string": "    // BUG: overflowing add for e.g. lo = i32::MAX - 2, hi = i32::MAX\n    (lo + hi) / 2",
+                    "new_string": "    lo + (hi - lo) / 2"
+                }),
+            )],
+            vec![tc("7", "run_tests", serde_json::json!({}))],
+        ],
+        "Fixed percent (zero-whole + half-away round) and overflow-safe midpoint. Tests pass.",
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

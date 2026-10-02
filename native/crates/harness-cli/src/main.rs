@@ -15,7 +15,7 @@ use harness_core::{
     AllowList, DenyAll, FakeModel, FunctionTool, RunConfig, RunEvent, Runner,
     ToolGate, ToolResult, VERSION,
 };
-use harness_model::{broken_add_fix_script, OpenAiCompat};
+use harness_model::{broken_add_fix_script, broken_calc_fix_script, OpenAiCompat};
 use harness_tools::{coding_tool_names, coding_tools, Workspace};
 use metrics::{aggregate, detect_commit_sha, write_metrics, MetricsMeta};
 use serde_json::json;
@@ -61,6 +61,10 @@ enum Cmd {
         /// Model: fake | scripted | openai (default fake for CI safety)
         #[arg(long, default_value = "fake")]
         model: String,
+        /// Scripted fixture sequence: broken_add | broken_calc.
+        /// Default: detect from workspace Cargo.toml name / path; else broken_add.
+        #[arg(long, value_name = "NAME")]
+        script: Option<String>,
         /// Directory to write run.jsonl events
         #[arg(long)]
         record: Option<PathBuf>,
@@ -113,9 +117,18 @@ fn main() -> ExitCode {
             allow,
             workspace,
             model,
+            script,
             record,
             max_steps,
-        } => match ask_cmd(&prompt, &allow, &workspace, &model, record.as_deref(), max_steps)
+        } => match ask_cmd(
+            &prompt,
+            &allow,
+            &workspace,
+            &model,
+            script.as_deref(),
+            record.as_deref(),
+            max_steps,
+        )
         {
             Ok(code) => code,
             Err(e) => {
@@ -274,11 +287,49 @@ fn run_cmd(
     Ok(())
 }
 
+fn detect_scripted_fixture(workspace: &Path, script_flag: Option<&str>) -> Result<&'static str, String> {
+    if let Some(name) = script_flag {
+        return match name {
+            "broken_add" | "add" => Ok("broken_add"),
+            "broken_calc" | "calc" => Ok("broken_calc"),
+            other => Err(format!(
+                "unknown --script '{other}' (use broken_add|broken_calc)"
+            )),
+        };
+    }
+    let path_s = workspace.display().to_string();
+    if path_s.contains("broken_calc") {
+        return Ok("broken_calc");
+    }
+    if path_s.contains("broken_add") {
+        return Ok("broken_add");
+    }
+    // Fall back to Cargo.toml package name
+    let cargo = workspace.join("Cargo.toml");
+    if let Ok(body) = fs::read_to_string(&cargo) {
+        for line in body.lines() {
+            let t = line.trim();
+            if let Some(rest) = t.strip_prefix("name") {
+                let rest = rest.trim().trim_start_matches('=').trim();
+                let name = rest.trim_matches('"');
+                if name == "broken_calc" {
+                    return Ok("broken_calc");
+                }
+                if name == "broken_add" {
+                    return Ok("broken_add");
+                }
+            }
+        }
+    }
+    Ok("broken_add") // back-compat default
+}
+
 fn ask_cmd(
     prompt: &str,
     allow: &str,
     workspace: &Path,
     model_name: &str,
+    script_flag: Option<&str>,
     record: Option<&Path>,
     max_steps: usize,
 ) -> Result<ExitCode, String> {
@@ -291,7 +342,12 @@ fn ask_cmd(
             runner.run(&mut model, prompt, RunConfig { max_steps })
         }
         "scripted" => {
-            let mut model = broken_add_fix_script();
+            let which = detect_scripted_fixture(workspace, script_flag)?;
+            eprintln!("scripted fixture sequence: {which}");
+            let mut model = match which {
+                "broken_calc" => broken_calc_fix_script(),
+                _ => broken_add_fix_script(),
+            };
             runner.run(&mut model, prompt, RunConfig { max_steps })
         }
         "openai" => {

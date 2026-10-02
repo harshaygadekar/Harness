@@ -1,6 +1,6 @@
 # First head-to-head coding-agent benchmark (Phase 4)
 
-**Status:** Method + task frozen for row 1. **Results: empty until runs land.**  
+**Status:** Method + task frozen for row 1. **Track A (Harness scripted) recorded; fx Track A TBD / blocked.**  
 **Date opened:** 2026-10-02 (IST)  
 **Owners:** Thomas (task/method), Mike (Harness + fx runs), Jessie (gate), Alice (claim language)  
 **Rule:** No “beat fx” claim. No vanity single score. ASD-STE100.
@@ -109,11 +109,44 @@ If model/network variance dominates, say so in plain words.
 
 ## 6. Track A — runtime (scripted / fake)
 
-**Harness:** `harness ask --model scripted` (or a T1 scripted sequence for `broken_calc` when Mike adds it; until then use `broken_add` **only** as a smoke and say it is not row-1).
+**What Track A measures:** Harness / tool-loop **runtime overhead only** with a fixed scripted sequence. It is **not** agent IQ and **not** a claim vs fx.
 
-**Row-1 requirement:** scripted path on **`broken_calc`** (search/read/patch/test). If missing, Mike adds a scripted sequence **outside** `harness-core` before publishing Track A for T1.
+### 6.1 How to select scripted `broken_calc` vs `broken_add`
 
-**fx:** run equivalent only if a fake/scripted mode exists. Else Track A is Harness-only + note `fx: N/A`.
+```bash
+cd native
+cargo build --release -p harness-cli
+
+# Recommended: fresh copy of the fixture (never mutate git fixture)
+FIX=$(mktemp -d)
+cp -a fixtures/broken_calc/. "$FIX/"
+
+# Option A — workspace detect (Cargo.toml name `broken_calc` or path contains broken_calc)
+./target/release/harness ask \
+  --model scripted \
+  --allow coding,shell \
+  --workspace "$FIX" \
+  --prompt "fix the failing tests" \
+  --record /tmp/harness-t1-trackA
+# Prefer the exact fenced prompt from TASK.md for published rows (operators paste it).
+
+# Option B — explicit script flag (back-compat default is broken_add)
+./target/release/harness ask \
+  --model scripted \
+  --script broken_calc \
+  --allow coding,shell \
+  --workspace "$FIX" \
+  --prompt "fix the failing tests" \
+  --record /tmp/harness-t1-trackA
+
+# broken_add smoke (Phase 3; not row-1)
+./target/release/harness ask --model scripted --script broken_add \
+  --allow coding,shell --workspace "$ADD_COPY" --prompt "fix the failing tests"
+```
+
+`--script` accepts `broken_calc` | `broken_add` (aliases `calc` | `add`). If omitted with `--model scripted`, the CLI detects from workspace path or `Cargo.toml` `name`; otherwise defaults to **`broken_add`** for back-compat.
+
+**fx:** run equivalent only if a fake/scripted mode exists. Else Track A is Harness-only + note `fx: N/A (no fake-model API)` / blocked.
 
 ---
 
@@ -131,10 +164,41 @@ Store complete Harness `run.jsonl` + `metrics.json`. Store fx session log / tran
 
 ### Track A
 
+**Machine (shared host for this publish):**  
+`uname -a`: `Linux grok-bot-vm-6854201 6.12.94+ #1 SMP PREEMPT_DYNAMIC Fri Sep 18 16:05:18 UTC 2026 x86_64 GNU/Linux`  
+CPU: Intel(R) Xeon(R) Processor (8 logical CPUs) · RAM: 16397616 kB (~16 GiB) · arch: x86_64  
+
+**Harness Track A (T1/broken_calc, model=scripted):**
+
+| Field | Value |
+|-------|--------|
+| agent | harness |
+| track | A (RUNTIME only — not agent IQ vs fx) |
+| model | `scripted` (`broken_calc_fix_script`) |
+| harness commit SHA | *(filled after commit — see §8.1)* |
+| fixture content SHA-256 | `e72e0c456c320fe3b1032db6dc9f812c31e70c57a0af52a97b228f9b81bcbc19` |
+| allow | `coding,shell` (Jessie: deny-all default; shell only via allow) |
+| network | offline (no live model API) |
+| n | 1 |
+| success | yes (`cargo test` exit 0 on fixture **copy**) |
+| wall_time_ms | 553 |
+| model_turns | 8 |
+| total_tool_calls | 7 (all success; 0 fail / 0 duplicate) |
+| files_read / modified | 2 / 2 (`src/percent.rs`, `src/midpoint.rs`) |
+| useful_actions (heuristic) | 7 |
+| recorded run | `native/benchmarks/head_to_head/runs/T1-broken_calc-trackA-harness-20261002-060541/` (`run.jsonl` + `metrics.json` + `meta.json`; dir gitignored) |
+| measured_at | 2026-10-02T06:05:42+05:30 (IST) |
+
 | agent | n | success | wall_ms median | tool_calls median | notes |
 |-------|---|---------|----------------|-------------------|-------|
-| harness | | | | | |
-| fx | | | | | |
+| harness | 1 | yes | 553 | 7 | scripted `broken_calc`; RUNTIME only |
+| fx | — | not run | TBD | TBD | **blocked / not run yet** — no fx scripted/fake path exercised this session |
+
+**fx columns:** empty / TBD. Do not invent fx numbers. Track A Harness row is **not** a beat-fx claim.
+
+### 8.1 Harness commit for Track A row
+
+Post-landing commit SHA that contains `broken_calc_fix_script` + `--script` CLI: **PENDING_COMMIT** (updated in follow-up amend/commit after first land).
 
 ### Track B
 
