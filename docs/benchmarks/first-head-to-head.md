@@ -175,7 +175,7 @@ CPU: Intel(R) Xeon(R) Processor (8 logical CPUs) · RAM: 16397616 kB (~16 GiB) �
 | agent | harness |
 | track | A (RUNTIME only — not agent IQ vs fx) |
 | model | `scripted` (`broken_calc_fix_script`) |
-| harness commit SHA | *(filled after commit — see §8.1)* |
+| harness commit SHA |  |
 | fixture content SHA-256 | `e72e0c456c320fe3b1032db6dc9f812c31e70c57a0af52a97b228f9b81bcbc19` |
 | allow | `coding,shell` (Jessie: deny-all default; shell only via allow) |
 | network | offline (no live model API) |
