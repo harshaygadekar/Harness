@@ -175,7 +175,7 @@ CPU: Intel(R) Xeon(R) Processor (8 logical CPUs) Â· RAM: 16397616 kB (~16 GiB) Â
 | agent | harness |
 | track | A (RUNTIME only â€” not agent IQ vs fx) |
 | model | `scripted` (`broken_calc_fix_script`) |
-| harness commit SHA |  |
+| harness commit SHA | `14fafacf3e97b36875ff5eab242176ed66f8477d` |
 | fixture content SHA-256 | `e72e0c456c320fe3b1032db6dc9f812c31e70c57a0af52a97b228f9b81bcbc19` |
 | allow | `coding,shell` (Jessie: deny-all default; shell only via allow) |
 | network | offline (no live model API) |
@@ -198,7 +198,7 @@ CPU: Intel(R) Xeon(R) Processor (8 logical CPUs) Â· RAM: 16397616 kB (~16 GiB) Â
 
 ### 8.1 Harness commit for Track A row
 
-Post-landing commit SHA that contains `broken_calc_fix_script` + `--script` CLI: **PENDING_COMMIT** (updated in follow-up amend/commit after first land).
+Harness commit SHA that contains `broken_calc_fix_script` + `--script` CLI: `14fafacf3e97b36875ff5eab242176ed66f8477d` (docs-fill follow-up may tip HEAD).
 
 ### Track B
 
