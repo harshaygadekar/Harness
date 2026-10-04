@@ -236,6 +236,26 @@ Harness commit SHA that contains `broken_calc_fix_script` + `--script` CLI: `14f
 | harness | `gemini-3.5-flash` | 1 | 0/1 | 111115 | 2 | unknown | live Track B; stopped on HTTP read timeout before any edit |
 | fx | — | — | not run | TBD | TBD | TBD | **not run** — MODEL DIFFERENCE vs Harness unknown until fx uses the same model |
 
+**Track B repeat (run 2 of n):** still not a vs-fx result. fx was not run. No coding-quality verdict and no loss-to-fx claim.
+
+| Field | Value |
+|-------|--------|
+| run | 2 |
+| agent | harness |
+| model | `gemini-3.5-flash` (same endpoint and CLI flags as run 1) |
+| n | 2 (two live runs; not a comparison with fx) |
+| success | **no** (`task_success` false, `exit_status` fail, run status `Failed`) |
+| wall_time_ms | 55782 |
+| model_turns | 3 |
+| total_tool_calls | 2 (1 success `list_files`, 1 fail `run_tests`, 0 duplicate) |
+| files modified | 0 (`final.diff` empty) |
+| stop reason | Third model turn returned HTTP 503 UNAVAILABLE (“high demand”); the agent had not edited the copy. |
+| operator `cargo test` | exit 101 (5 passed, 5 failed) |
+| recorded run | `native/benchmarks/head_to_head/runs/T1-broken_calc-trackB-harness-r2-20261004-125829/` (gitignored) |
+| measured_at | 2026-10-04T12:59:25+05:30 (IST) |
+| harness commit at measurement | `e435905cf2ebee199339ec5364885910776a851f` |
+
+
 Raw per-run files: `native/benchmarks/head_to_head/runs/` (gitignored if large; keep at least one redacted sample + meta).
 
 ---
