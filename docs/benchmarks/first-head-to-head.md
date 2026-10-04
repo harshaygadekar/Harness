@@ -1,6 +1,6 @@
 # First head-to-head coding-agent benchmark (Phase 4)
 
-**Status:** Method + task frozen for row 1. **Track A (Harness scripted) recorded; fx Track A TBD / blocked.**  
+**Status:** Method + task frozen for row 1. **Track A (Harness scripted) recorded; fx Track A TBD / blocked.** **Track B = one real coding-agent run on Gemini (Harness only; failed before a fix). fx Track B not run (TBD).**  
 **Date opened:** 2026-10-02 (IST)  
 **Owners:** Thomas (task/method), Mike (Harness + fx runs), Jessie (gate), Alice (claim language)  
 **Rule:** No “beat fx” claim. No vanity single score. ASD-STE100.
@@ -202,10 +202,39 @@ Harness commit SHA that contains `broken_calc_fix_script` + `--script` CLI: `14f
 
 ### Track B
 
+**Label:** Track B = real coding-agent run on Gemini (live model + agent loop). Not Track A. Not a beat-fx claim.
+
+**MODEL DIFFERENCE vs fx:** unknown until fx runs the **same** model (`gemini-3.5-flash` via the OpenAI-compatible Gemini endpoint). fx was **not** run. fx columns stay TBD. Do not read this row as an agent-performance win.
+
+**Harness Track B (T1/broken_calc, n=1):**
+
+| Field | Value |
+|-------|--------|
+| agent | harness |
+| track | B (live coding agent) |
+| model | `gemini-3.5-flash` (`HARNESS_MODEL`; `HARNESS_BASE_URL` = Gemini OpenAI-compatible `v1beta/openai`; CLI `--model openai`) |
+| harness commit SHA | `c7ed4ce83ca7af5685fc45caabe33b0e9fe02388` |
+| fixture content SHA-256 | `e72e0c456c320fe3b1032db6dc9f812c31e70c57a0af52a97b228f9b81bcbc19` |
+| allow | `coding,shell` |
+| network | online (live model API) |
+| max_steps | 24 |
+| n | 1 |
+| success | **no** (`task_success` false, `exit_status` fail, run status `Failed`) |
+| wall_time_ms | 111115 |
+| model_turns | 3 |
+| total_tool_calls | 2 (2 success, **0 fail**, 0 duplicate) |
+| files_read / modified | 0 / 0 (only `list_files` on workspace root and `src/`) |
+| tests executed by agent | 0 |
+| tokens (prompt / completion / total) | not present in `metrics.json` (`unknown`) |
+| final test result | fail — agent did not edit the copy (`final.diff` empty). Operator `cargo test` on that copy after the run: exit 101 (5 passed, 5 failed). |
+| recorded run | `native/benchmarks/head_to_head/runs/T1-broken_calc-trackB-harness-20261004-125242/` (`run.jsonl` + `metrics.json` + `final.diff` + `machine.txt`; dir gitignored) |
+| measured_at | 2026-10-04T12:54:34+05:30 (IST) |
+| error (scrubbed) | Third `chat/completions` read timed out (`MODEL_ERROR` … `timed out reading response`). No API key in the error text. Two earlier model turns returned. |
+
 | agent | model | n | success rate | wall_ms median | tool_calls median | tokens total median | notes |
 |-------|-------|---|--------------|----------------|-------------------|---------------------|-------|
-| harness | | | | | | | |
-| fx | | | | | | | |
+| harness | `gemini-3.5-flash` | 1 | 0/1 | 111115 | 2 | unknown | live Track B; stopped on HTTP read timeout before any edit |
+| fx | — | — | not run | TBD | TBD | TBD | **not run** — MODEL DIFFERENCE vs Harness unknown until fx uses the same model |
 
 Raw per-run files: `native/benchmarks/head_to_head/runs/` (gitignored if large; keep at least one redacted sample + meta).
 
