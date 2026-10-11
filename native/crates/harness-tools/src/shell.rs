@@ -57,12 +57,15 @@ impl Tool for RunShell {
         if out.timed_out {
             return Err(ToolError::Failed("timeout 30s".into()));
         }
-        let mut text = out.stdout.render();
-        if out.stderr.total() > 0 {
+        // Bound each stream on its own (16 KiB total) so the stdout tail
+        // (e.g. cargo's final failure list) is not pushed out by stderr.
+        let err = out.stderr.render();
+        let err_budget = if err.is_empty() { 0 } else { err.len().min(4 * 1024) };
+        let mut text = bound_head_tail(&out.stdout.render(), 16 * 1024 - err_budget);
+        if !err.is_empty() {
             text.push_str("\n--- stderr ---\n");
-            text.push_str(&out.stderr.render());
+            text.push_str(&bound_head_tail(&err, err_budget));
         }
-        text = bound_head_tail(&text, 16 * 1024);
         text.push_str(&format!("\n[exit {}]", out.code.unwrap_or(-1)));
         Ok(ToolResult {
             content: text,
