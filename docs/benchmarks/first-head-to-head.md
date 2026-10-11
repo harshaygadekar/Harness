@@ -523,3 +523,8 @@ wall_ms is operator-measured around the agent process and includes proxy hold ti
 | Harness | 3 of 3 | 55861 / 65876 / 76112 | 9397 / 11025 / 11834 | 14 | 13 (12/1/2) | 28833 |
 
 Medians of ok/fail/dup are taken per column. fx steps and Harness model turns measure different things and are not directly comparable. Three runs per agent; spread is wide relative to the sample. Run folders: `native/benchmarks/head_to_head/runs/T1v2-broken_calc-trackB-{fx,harness}-paced-P-*` (gitignored; usage numbers only).
+
+## Task packs frozen, not yet run (Phase 4)
+
+- **T7 large_repo** — `native/benchmarks/head_to_head/T7_large_repo/`, fixture `native/fixtures/large_repo_v1/` (sha256 `fa3fa9fc45dbf75e648033d2c4b006935c3b3a0c3c538e6bff0373e0d03b0d6b`). Measures context read to locate a bug in a big irrelevant repo.
+- **T9 noisy_tests** — `native/benchmarks/head_to_head/T9_noisy_tests/`, fixture `native/fixtures/noisy_tests_v1/` (sha256 `1af0af8a77913f599095320f0bd87766c77de53d91c4043a4dbb88a6a082a078`). Measures handling of very large `cargo test` output.

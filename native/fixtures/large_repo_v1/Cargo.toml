@@ -1,0 +1,9 @@
+[package]
+name = "ledgerkit"
+version = "0.7.3"
+edition = "2021"
+description = "Ledger, billing and reporting toolkit"
+
+[workspace]
+
+[dependencies]

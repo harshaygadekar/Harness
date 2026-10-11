@@ -1,0 +1,15 @@
+{
+  "task_id": "T9/noisy_tests_v1",
+  "category": "bug_fix_noisy_output",
+  "fixture_path": "native/fixtures/noisy_tests_v1",
+  "fixture_content_sha256": "1af0af8a77913f599095320f0bd87766c77de53d91c4043a4dbb88a6a082a078",
+  "agent_prompt_file": "TASK.md",
+  "success_file": "SUCCESS.md",
+  "oracle_file": "ORACLE.md",
+  "success_command": "cargo test",
+  "requires_inspect": true,
+  "leaks_implementation_in_prompt": false,
+  "leaks_implementation_in_tree": false,
+  "phase": 4,
+  "status": "frozen"
+}

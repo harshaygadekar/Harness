@@ -1,0 +1,15 @@
+{
+  "task_id": "T7/large_repo_v1",
+  "category": "bug_fix_large_repo",
+  "fixture_path": "native/fixtures/large_repo_v1",
+  "fixture_content_sha256": "fa3fa9fc45dbf75e648033d2c4b006935c3b3a0c3c538e6bff0373e0d03b0d6b",
+  "agent_prompt_file": "TASK.md",
+  "success_file": "SUCCESS.md",
+  "oracle_file": "ORACLE.md",
+  "success_command": "cargo test",
+  "requires_inspect": true,
+  "leaks_implementation_in_prompt": false,
+  "leaks_implementation_in_tree": false,
+  "phase": 4,
+  "status": "frozen"
+}
