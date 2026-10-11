@@ -15,7 +15,9 @@ use harness_core::{
     AllowList, DenyAll, FakeModel, FunctionTool, RunConfig, RunEvent, Runner,
     ToolGate, ToolResult, VERSION,
 };
-use harness_model::{broken_add_fix_script, broken_calc_fix_script, OpenAiCompat};
+use harness_model::{
+    broken_add_fix_script, broken_calc_fix_script, broken_calc_v2_fix_script, OpenAiCompat,
+};
 use harness_tools::{coding_tool_names, coding_tools, Workspace};
 use metrics::{aggregate, detect_commit_sha, write_metrics, MetricsMeta};
 use serde_json::json;
@@ -61,7 +63,7 @@ enum Cmd {
         /// Model: fake | scripted | openai (default fake for CI safety)
         #[arg(long, default_value = "fake")]
         model: String,
-        /// Scripted fixture sequence: broken_add | broken_calc.
+        /// Scripted fixture sequence: broken_add | broken_calc | broken_calc_v2.
         /// Default: detect from workspace Cargo.toml name / path; else broken_add.
         #[arg(long, value_name = "NAME")]
         script: Option<String>,
@@ -292,12 +294,16 @@ fn detect_scripted_fixture(workspace: &Path, script_flag: Option<&str>) -> Resul
         return match name {
             "broken_add" | "add" => Ok("broken_add"),
             "broken_calc" | "calc" => Ok("broken_calc"),
+            "broken_calc_v2" | "calc2" => Ok("broken_calc_v2"),
             other => Err(format!(
-                "unknown --script '{other}' (use broken_add|broken_calc)"
+                "unknown --script '{other}' (use broken_add|broken_calc|broken_calc_v2)"
             )),
         };
     }
     let path_s = workspace.display().to_string();
+    if path_s.contains("broken_calc_v2") {
+        return Ok("broken_calc_v2");
+    }
     if path_s.contains("broken_calc") {
         return Ok("broken_calc");
     }
@@ -348,6 +354,7 @@ fn ask_cmd(
             eprintln!("scripted fixture sequence: {which}");
             let mut model = match which {
                 "broken_calc" => broken_calc_fix_script(),
+                "broken_calc_v2" => broken_calc_v2_fix_script(),
                 _ => broken_add_fix_script(),
             };
             runner.run(&mut model, prompt, RunConfig { max_steps })

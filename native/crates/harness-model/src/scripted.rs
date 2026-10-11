@@ -95,7 +95,11 @@ pub fn broken_add_fix_script() -> ScriptedModel {
                     "new_string": "a + b"
                 }),
             )],
-            vec![tc("4", "run_tests", serde_json::json!({}))],
+            vec![tc(
+                "4",
+                "run_tests",
+                serde_json::json!({}),
+            )],
         ],
         "Fixed add(2,2). Tests pass.",
     )
@@ -146,7 +150,64 @@ pub fn broken_calc_fix_script() -> ScriptedModel {
                     "new_string": "    lo + (hi - lo) / 2"
                 }),
             )],
-            vec![tc("7", "run_tests", serde_json::json!({}))],
+            vec![tc(
+                "7",
+                "run_tests",
+                serde_json::json!({}),
+            )],
+        ],
+        "Fixed percent (zero-whole + half-away round) and overflow-safe midpoint. Tests pass.",
+    )
+}
+
+/// Scripted sequence for `fixtures/broken_calc_v2` (Track A / T1 v2, no hints).
+/// Same steps as v1; patch anchors match the v2 source (BUG comments removed).
+pub fn broken_calc_v2_fix_script() -> ScriptedModel {
+    ScriptedModel::from_tool_then_text(
+        vec![
+            vec![tc(
+                "1",
+                "search",
+                serde_json::json!({"pattern": "fn percent", "path": "src"}),
+            )],
+            vec![tc(
+                "2",
+                "search",
+                serde_json::json!({"pattern": "fn midpoint", "path": "src"}),
+            )],
+            vec![tc(
+                "3",
+                "read_file",
+                serde_json::json!({"path": "src/percent.rs"}),
+            )],
+            vec![tc(
+                "4",
+                "read_file",
+                serde_json::json!({"path": "src/midpoint.rs"}),
+            )],
+            vec![tc(
+                "5",
+                "apply_patch",
+                serde_json::json!({
+                    "path": "src/percent.rs",
+                    "old_string": "    if whole == 0 {\n        return Some(0);\n    }\n    Some((part * 100) / whole)",
+                    "new_string": "    if whole == 0 {\n        return None;\n    }\n    Some(((f64::from(part) * 100.0) / f64::from(whole)).round() as i32)"
+                }),
+            )],
+            vec![tc(
+                "6",
+                "apply_patch",
+                serde_json::json!({
+                    "path": "src/midpoint.rs",
+                    "old_string": "    (lo + hi) / 2",
+                    "new_string": "    lo + (hi - lo) / 2"
+                }),
+            )],
+            vec![tc(
+                "7",
+                "run_tests",
+                serde_json::json!({}),
+            )],
         ],
         "Fixed percent (zero-whole + half-away round) and overflow-safe midpoint. Tests pass.",
     )
