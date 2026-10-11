@@ -61,13 +61,15 @@ Notes:
 
 ## 6. Cost estimate (30 runs per model)
 
-| Model | Low USD | Low INR | High USD | High INR |
-|-------|---------|---------|----------|----------|
-| Gemini 3.1 Pro Preview | 8.45 | 817 | 15.39 | 1,487 |
-| Claude Sonnet 5.5 | 8.42 | 813 | 15.26 | 1,474 |
-| GPT-6.1 Sol | 8.42 | 813 | 15.26 | 1,474 |
-| DeepSeek V4 Pro (peak) | 5.51 | 532 | 9.90 | 957 |
-| **All 4 models** | **30.80** | **2,975** | **55.81** | **5,392** |
+| Model | Low USD | Low INR | High USD | High INR | fx can start |
+|-------|---------|---------|----------|----------|--------------|
+| Gemini 3.1 Pro Preview | 8.45 | 817 | 15.39 | 1,487 | untested |
+| Claude Sonnet 5.5 | 8.42 | 813 | 15.26 | 1,474 | untested |
+| GPT-6.1 Sol | 8.42 | 813 | 15.26 | 1,474 | untested |
+| DeepSeek V4 Pro (peak) | 5.51 | 532 | 9.90 | 957 | untested |
+| **All 4 models** | **30.80** | **2,975** | **55.81** | **5,392** | — |
+
+fx start check: fx has only been run on Gemini Flash-Lite through our proxy and on Cerebras. Gemini 3.1 Pro uses the same Gemini API, so it is the most likely to work, but nobody has run it. A one-request start check per model is needed before any paid row. That check needs the key for that provider. Do not mark any model 'fx confirmed' without a run file.
 
 Split by task (USD, low / high):
 

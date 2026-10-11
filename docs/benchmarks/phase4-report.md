@@ -1,10 +1,12 @@
-# Phase 4 report: gains, losses and mistakes (T7/T9 pending)
+# Phase 4 report: gains, losses and mistakes (v2)
 
 **Audience:** Harsha (owner), Tech Team (Thomas, Jessie, Walter, Alice, The Chief, Mike)  
-**Date:** 2026-10-11 (IST)  
-**Status:** Interim. T7 and T9 runs are in progress. Their results are not in this report.  
+**Version:** v2  
+**Date:** 11 Oct 2026 (IST)  
+**Status:** Interim. The T7 and T9 runs are finished. T9 has only 1 usable run per agent. The T9 timeout is confirmed as a test-tool bug (section 11.6). The T7 equal-limit rerun is pending.  
 **Main data:** [`first-head-to-head.md`](first-head-to-head.md). Method: [`../research/13-tool-efficiency.md`](../research/13-tool-efficiency.md), [`../research/14-phase3-metrics.md`](../research/14-phase3-metrics.md), [`../research/15-phase4-first-bench.md`](../research/15-phase4-first-bench.md).  
-**Rules for this report:** Facts from the bench doc, the run folders and the team only. No invented numbers. No claim that Harness beats fx or is better than fx. "Team input" marks facts that a team member gave for this report.
+**Rules for this report:** Facts from the bench doc, the run folders and the team only. No invented numbers. No claim that Harness beats fx or is better than fx. "Team input" marks facts that a team member gave for this report.  
+**Rule:** No feature work and no win claims before Harsha's review.
 
 ---
 
@@ -20,7 +22,7 @@ All other sets are weaker. They use T1 v1 (the fixture had fix hints), or one ag
 
 Most of the phase went into free-tier quotas, provider stream formats and approval waits. We also found and fixed two real key-leak bugs.
 
-The data supports gate result F at most, on one task, one weak model and one provider. It does not yet name a Harness weakness to build a fix for. The answer to "what do we build next" is "nothing yet", until T7 and T9 land.
+The data supports gate result F at most, on one task, one weak model and one provider. The live rows do not name a Harness weakness. A model-free scripted test (section 11.6) found one Harness bug: the test and shell tools block when output is larger than 64 KiB. It is confirmed on 2 tasks with no rate limit, so it is on the fix list (section 9.2). The fix is not built. No work starts before Harsha's review.
 
 ---
 
@@ -32,8 +34,8 @@ The data supports gate result F at most, on one task, one weak model and one pro
 |------|---------|--------|------|
 | T1 v1 `broken_calc` | `native/fixtures/broken_calc/` | Run | Bugs labeled in source. The tree had `BUG:` comments, a formula hint in a test comment, a README with the requirements and notes that named the bug files. All v1 rows are weak. |
 | T1 v2 `broken_calc_v2` | `native/fixtures/broken_calc_v2/` (frozen at `20baad1`) | Run | Same bugs and test asserts. All hints removed. |
-| T7 `large_repo_v1` | `native/fixtures/large_repo_v1/` (frozen at `2a99d06`) | Running | 173 files, 8,325,651 bytes. Measures how much context an agent reads to find a bug in a big repo with decoys. |
-| T9 `noisy_tests_v1` | `native/fixtures/noisy_tests_v1/` (frozen at `2a99d06`) | Running | Baseline `cargo test` output is 431,640 bytes. Measures how an agent handles very large test output. |
+| T7 `large_repo_v1` | `native/fixtures/large_repo_v1/` (frozen at `2a99d06`) | Run (finished) | 173 files, 8,325,651 bytes. Measures how much context an agent reads to find a bug in a big repo with decoys. |
+| T9 `noisy_tests_v1` | `native/fixtures/noisy_tests_v1/` (frozen at `2a99d06`) | Run (finished; 1 usable run per agent) | Baseline `cargo test` output is 431,640 bytes. Measures how an agent handles very large test output. |
 
 ### 2.2 Tracks
 
@@ -85,11 +87,13 @@ Each item gives the numbers, the task and model, and the confidence. "n" is runs
 ### G2. Fewer failed and duplicate tool calls in the paced set (weak)
 
 - **Paced T1 v2:** median tool calls ok/fail/dup: Harness 12/1/2, fx 8/2/4.
+- **fx dup 4 is not verifiable.** The fx raw output (`stdout.txt`) has tool name and status only, with no arguments. So we cannot check the fx dup count from the raw output. Use the labeler counts in section 11.1 for repeat calls.
+- **Definition difference.** `metrics.json` counts a `run_tests` call that reports failing tests as a failed call. The labeler scores a test run by its result (useful if it first shows failing tests or flips fail to pass, unnecessary if it repeats an earlier result). So "fail" here and "failed" in section 11.1 are different measures.
 - **Confidence:** n = 3, 1 task. Weak. fx "dup" means repeated identical name+status+command entries in its tool list. That measure is coarser than the Harness one. The two columns are not the same measure.
 
 ### G3. Harness started and finished where fx could not start (compatibility, not quality)
 
-- **Flash-Lite direct (T1 v1):** Harness 3 of 3. fx 0 of 1 with `InvalidChunk` at 0 steps. Cause: fx cannot parse the Gemini OpenAI-compatible stream (tool-call deltas without `index`, an extra `extra_content` field, finish_reason `stop` with tool calls).
+- **Flash-Lite direct (T1 v1):** Harness 3 of 3. fx 0 of 1 with `InvalidChunk` at 0 steps. Cause: fx cannot parse the Gemini OpenAI-compatible stream (tool-call deltas without `index`, an extra provider-specific field, finish_reason `stop` with tool calls).
 - **Cerebras `qwen-3.8-27b` (T1 v1):** Harness 3 of 3 (median 6 turns, 12 tool calls, 16,722 input tokens). fx 0 of 3 with HTTP 400 "System message must be at the beginning".
 - **Confidence:** this is provider compatibility. It says nothing about coding quality. Both sets are inconclusive as comparisons (see section 5).
 
@@ -131,17 +135,16 @@ Each item gives the numbers, the task and model, and the confidence. "n" is runs
 - **Change:** bounded retry outside core in the OpenAI-compatible adapter (`29d1f58`), a read-timeout test and a separate retry-wait metric (`2a6168c`).
 - **Side effect:** a retry after a read timeout can send the same request twice. That uses quota and can be billed twice. Every retry is counted in `model_retries`.
 
-### W4. The 32 KiB output cut may hide failures on T9 (pending)
+### W4. The 32 KiB output cut may hide failures on T9 (not measured)
 
 - **Design fact:** Harness cuts each tool output at 32 KiB (`MAX_OBS_BYTES` in `native/crates/harness-core/src/events.rs`). It keeps the start and adds a note with the full length.
 - **Risk:** the T9 baseline `cargo test` output is 431,640 bytes. If the failing test name or the assert diff is after the first 32 KiB, the model may not see it.
-- **Status:** no data yet. T9 is running.
+- **Status:** T9 is finished, but it does not measure this. In the Harness T9 run, the test calls that ran the failing tests timed out. So the cut did not cause the miss there. See section 11.4.
 
 ### W5. Decoy reads (weak signal)
 
 - In T1 v2 unpaced, V-H1 and V-H3 read `notes/OLD_BUGS.md` (a stale-notes decoy). Neither run edited it. No paced run read it.
-- We cannot compare this with fx, because fx read paths are not in its JSON output.
-- T7 has decoys and will give more data.
+- fx JSON output has no read paths. But fx stderr has one activity line per tool call, with the path (for example `Reading <path>`). The labeler uses these lines. So decoy reads are comparable. See section 11.1.
 
 ### W6. Wall time is not a gain
 
@@ -202,8 +205,8 @@ Each item gives the numbers, the task and model, and the confidence. "n" is runs
 
 ### M6. Two key-leak bugs in the scrub
 
-- **Adapter scrub:** it hid only 8 characters after `sk-` and only the first match. A 52-character `csk-` key would leak about 40 characters. Fixed in `cfbb242`.
-- **First fix side effect:** it redacted normal words such as `task-list`. Jessie notes that this changed what the model saw. Fixed with a word-boundary rule in `1b7c38c`.
+- **Adapter scrub:** it hid only 8 characters after the key prefix and only the first match. A 52-character Cerebras key would leak about 40 characters. Fixed in `cfbb242`.
+- **First fix side effect:** it redacted normal hyphenated words. Jessie notes that this changed what the model saw. Fixed with a word-boundary rule in `1b7c38c`.
 - **Core `scrub_secrets`:** same class of bug (12 characters, first match only, could crash on multibyte text). Fixed in PR #10 `be14c4c`. No ADR, because Walter classed it as a bug fix in an existing function.
 - **Impact:** no key appeared in any run folder, doc or commit across all scans (Jessie).
 
@@ -227,23 +230,23 @@ Each item gives the numbers, the task and model, and the confidence. "n" is runs
 ## 7. Measurement gaps
 
 1. **fx token breakdown.** We have fx totals per run only. We cannot split them into prompt, tool schema, tool output and history. So we cannot explain the token gap.
-2. **fx read paths.** fx JSON output does not list the files it reads. We count fx `read_file` calls only. We cannot compare decoy reads.
+2. **fx read paths (corrected in v2).** v1 said that fx output has no file paths. That is wrong. fx JSON output (`stdout.txt`) has no paths, but fx stderr has one activity line per tool call with the path (`Reading <path>`, `Editing <path>` and others). The labeler uses these lines, so decoy reads are comparable between the agents. fx stderr has no path for some failed edits.
 3. **Steps and turns.** fx steps and Harness turns are counted differently. The turn gap is not like-for-like (team input, Thomas). Proxy upstream-request counts help, but we have them for the paced set only.
-4. **Unnecessary tool calls are a floor (team input, Thomas).** `unnecessary_tool_calls` in `metrics.json` counts only repeat reads and repeat searches. It is not the full oracle-labeled count from doc 13. Useful/total numbers are a floor, not the real figure.
+4. **Unnecessary tool calls in `metrics.json` are a floor (team input, Thomas).** `unnecessary_tool_calls` in `metrics.json` counts only repeat reads and repeat searches. The oracle labeler (section 11.1) now gives a fuller count. Also, `metrics.json` counts a failing `run_tests` call as a failed call, but the labeler scores test runs by result. Do not mix the two counts.
 5. **Small samples (team input, Thomas).** With n = 3 per cell, p95 equals the max. This report gives min, median and max for that reason.
 6. **One weak model, one provider, our own proxy (team input, Thomas).** All paired rows use `gemini-3.5-flash-lite` through our bench proxy. There is no paired row on a stronger model, because fx could not start on Cerebras.
 7. **Track A is Harness only (team input, Thomas).** fx has no scripted mode, so we measure runtime overhead for Harness only.
 8. **Deny-all is not tested (team input, Jessie).** Harness ran every live row with `--allow coding,shell`. fx ran `--full-access` or `--auto`. No row tests the Harness deny-all default.
 9. **No sandbox (team input, Jessie).** No live run used an OS sandbox. We make no sandbox claim.
 10. **fx retry waits.** fx does not report its 429 retry count or wait.
-11. **Startup and memory.** Track B rows do not record process startup or peak RSS for either agent.
+11. **Startup and memory.** Startup is measured with no model (section 11.3). Harness peak RSS under scripted load is measured. fx peak RSS is pending. Track B rows do not record peak RSS.
 12. **Proxy rewrites.** The proxy changes the stream for both agents (adds `index`, rewrites finish_reason, adds Gemini signatures back). This is a controlled difference, but it is not how either agent talks to Gemini without the proxy.
 
 ---
 
-## T7 and T9 results: pending (placeholder)
+## T7 and T9: questions (from v1)
 
-**Status:** runs in progress. No result is in this report. Do not read anything into this section until the bench doc has the T7 and T9 sections.
+**Status:** the runs are finished. Results are in section 11. The questions below stay open. T7 needs an equal-limit rerun. T9 has n = 1.
 
 Questions these runs must answer:
 
@@ -259,11 +262,11 @@ Questions these runs must answer:
 
 | Code | Meaning | Evidence today | Reading |
 |------|---------|----------------|---------|
-| A | Lose on startup | Not measured in Track B. Track A has no fx side. | No data |
+| A | Lose on startup | No model, median of 10: Harness 3.1 ms, fx 2.4 ms (section 11.3). | Harness start is slower by 0.7 ms on this box. Small. Not a work item (Alice). |
 | B | Lose on coding success | Paced T1 v2: both 3 of 3. Unpaced T1 v2: Harness 2 of 3, fx 3 of 3, and the miss was a 429. | No loss without a rate limit |
 | C | Lose on tool efficiency | Harness has more turns than fx has steps. Units differ. Upstream requests are close (median 14 vs 15). Unnecessary-call counts are a floor. | Not shown |
 | D | Lose on context efficiency | Harness used fewer input tokens on T1 v2 in both sets. | No loss on T1 v2 |
-| E | Lose on memory | Peak RSS not recorded | No data |
+| E | Lose on memory | No model: Harness about 4 MB, fx 1.5 MB max RSS. Under load: Harness about 168 MB (includes `cargo test` child). fx peak under load pending. | No load data for fx |
 | F | Win some axes, lose others | Lower tokens on one task. More turns in a unit that is not like-for-like. Weaker under quota pressure. | **At most F**, on 1 task, 1 weak model, 1 provider path |
 | G | Inconclusive | Cerebras, Flash-Lite direct, Gemini Flash r1–r5, Track A | Large parts are G |
 
@@ -275,48 +278,50 @@ Questions these runs must answer:
 
 ### 9.1 What does the data say we should build next?
 
-**Today: nothing yet. The answer is pending T7 and T9.** (Rule from The Chief.)
+**Today: one fix item qualifies (section 9.2), but nothing is built before Harsha's review.** (Rule from The Chief.) T7 and T9 are finished. T7 is not a fair test, because the step limits were not equal. T9 has n = 1. See section 11.
 
-A fix item counts only if it is a Harness miss on 2 or more tasks with no rate limit in play (Alice's ranking rule). Today we have one task family (T1 v1 and v2). The only Harness miss without a hinted fixture (V-H1) was a 429. So no product fix item qualifies. If T7 and T9 do not show a Harness miss with no rate limit in play, the answer stays "nothing yet, add tasks".
+A fix item counts only if it is a Harness miss on 2 or more tasks with no rate limit in play (Alice's ranking rule). In the live rows, no miss qualifies. The only T1 v2 Harness miss (V-H1) was a 429. The T7 Harness misses happened at a step limit that fx did not have. The T9 live miss had 429s. But the scripted test (section 11.6) shows the T9 test-tool timeouts on 2 tasks with no rate limit. So that one bug qualifies. Everything else stays "add tasks".
 
 Each item below follows the core rule: prove the need, try outside core, measure, then write an ADR before any core change.
 
 ### 9.2 Fix items (product)
 
-None qualify today.
+1. **Test and shell tools block on large output (`harness-tools`).** Confirmed on 2 tasks with no rate limit (section 11.6). Proposed fix: read the output while the process runs, keep a bounded amount, keep the time limit. Not built. No work starts before Harsha's review.
 
 ### 9.3 Watch items (ranked)
 
 These have a measured signal but do not meet the 2-task rule, or are excluded by rule (turns, startup, size).
 
 1. **32 KiB output cut on large test output (W4).**
-   - Evidence: `MAX_OBS_BYTES` keeps the start only. T9 baseline output is 431,640 bytes. No run data yet.
-   - Experiment: on T9, record for each `cargo test` observation whether the failing test names fall inside the first 32 KiB. Then, outside core, try a tool-side output filter in the shell/test plugin (for example, keep failure lines and the tail) and re-run T9 at equal pacing.
+   - Evidence: `MAX_OBS_BYTES` keeps the start only. T9 baseline output is 431,640 bytes. No run measures this yet. The test-tool bug (section 11.6) stopped the output before the cut could apply.
+   - Experiment: after the test-tool fix, run T9 again. For each `cargo test` observation, record whether the failing test names are in the first 32 KiB. If not, try a tool-side filter outside core (for example, keep failure lines and the tail).
    - Result that justifies building: Harness misses T9, or needs more calls than on T1, because the failure text was cut, and the same pattern shows on a second large-output task with no 429.
 2. **Rate-limit fragility (W2).**
    - Evidence: r3–r5 failed on 429. V-H1 failed on 429 after 3 retries while fx finished under 7–13 429s.
    - Experiment: outside core, in the adapter, try a longer retry budget that honours the quota window, and measure duplicate requests and wait time. Run at a fixed request rate below the limit.
    - Result that justifies building: Harness fails under a quota the team expects in real use, while fx finishes under the same quota, on 2 or more tasks. Today this stays excluded, because a rate limit is in play by definition.
 3. **Decoy reads (W5).**
-   - Evidence: V-H1 and V-H3 read `notes/OLD_BUGS.md`. No edits. No fx comparison possible.
-   - Experiment: count decoy reads and decoy edits on T7 against the oracle list.
+   - Evidence: V-H1 and V-H3 read `notes/OLD_BUGS.md`. No edits.
+   - Data now: the labeler counts decoy reads for both agents (section 11.1). T7 median decoy reads: Harness 1, fx 1. No run edited a decoy.
+   - Experiment: keep the decoy count in every labeled set.
    - Result that justifies building: decoy edits, or a failed run caused by decoys, on 2 or more tasks.
 4. **Turn count (W1).**
    - Evidence: Harness 14 turns vs fx 10 steps (paced v2). Upstream requests 14 vs 15.
    - Experiment: report upstream requests at the proxy for every paired set, so both agents use one unit.
    - Result that justifies building: a turn or request gap in one unit on 2 or more tasks that also costs success or tokens. Per Alice, turn count is not a work item yet.
-5. **Startup and binary size.** No Track B data. Not a work item (Alice).
+5. **Startup and binary size.** No-model startup is measured (section 11.3). Not a work item (Alice).
 
 ### 9.4 Measurement fixes (ranked)
 
 1. **fx token breakdown.** Log usage counts per request at the bench proxy (counts only, no content, no headers). This explains G1.
 2. **One unit for turns.** Record upstream requests at the proxy for every paired run.
-3. **Full oracle labels for unnecessary calls.** Build the doc-13 labels in replay, outside core, so useful/total is not a floor.
-4. **fx read paths.** Count tool-call names and paths from the model stream at the proxy, with no file content.
-5. **More runs and tasks.** n ≥ 5 per cell where quota allows (doc 15), and more tasks after T7 and T9.
+3. **Full oracle labels for unnecessary calls.** Done: labeler added in `92ceba8` (section 11.1).
+4. **fx read paths.** Done: the labeler reads paths from fx stderr activity lines.
+5. **More runs and tasks.** n ≥ 5 per cell where quota allows (doc 15). Rerun T7 with equal step limits, and T9 after the test-tool fix.
 6. **A stronger model and a second provider.** Find a paired path where both agents start without a proxy, or document why none exists.
 7. **A deny-all row.** One paired set with Harness at its default deny-all plus the minimum allow list, and the fx mode named.
-8. **Startup and peak RSS** in Track B rows.
+8. **fx peak RSS** in live runs (Harness load peak and startup are measured, section 11.3).
+9. **Stop reason separate from success** in `metrics.json` (`metrics.rs` lines 272–274 bug, section 11.4).
 
 ### 9.5 Process items (evidenced mistakes)
 
@@ -326,6 +331,124 @@ These have a measured signal but do not meet the 2-task rule, or are excluded by
 4. **Run both agents first** at the start of a phase (M4).
 5. **Check the machine before asking Harsha** for keys or access (M2).
 6. **Review before main** for adapter and bench changes (M5).
+
+---
+
+## 11. v2 additions (11 Oct 2026 IST)
+
+Sources: [`data/phase4_tool_labels.csv`](data/phase4_tool_labels.csv), [`phase4-strong-model-cost.md`](phase4-strong-model-cost.md), [`../../native/benchmarks/tools/README-labels.md`](../../native/benchmarks/tools/README-labels.md), [`first-head-to-head.md`](first-head-to-head.md) (commit `d1ef97f`), and raw runs in `native/benchmarks/head_to_head/runs/`.
+
+### 11.1 Tool-call labels
+
+The oracle labeler gives each tool call one label: useful, unnecessary, neutral or failed. It also counts decoy reads. A decoy read is neutral, but it is counted. The rules are in `README-labels.md`. The table gives median (min–max) per task, agent and mode. "Green" is the number of runs where operator `cargo test` passed. Only complete runs are counted.
+
+| Task | Agent | Mode | n | Green | Total calls median (min–max) | Useful | Unnecessary | Neutral | Failed | Decoy reads | Useful/total median (min–max) |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| T1v2 | fx | paced | 3 | 3 of 3 | 10 (8–14) | 6 (6–7) | 0 (0–3) | 3 (2–4) | 0 (0–1) | 0 (0–0) | 0.6 (0.5–0.75) |
+| T1v2 | fx | proxy | 3 | 3 of 3 | 14 (13–19) | 7 (6–9) | 1 (1–2) | 4 (3–5) | 3 (1–4) | 0 (0–1) | 0.474 (0.462–0.5) |
+| T1v2 | harness | paced | 3 | 3 of 3 | 13 (11–15) | 6 (6–6) | 1 (1–1) | 6 (4–8) | 0 (0–0) | 1 (0–3) | 0.462 (0.4–0.545) |
+| T1v2 | harness | proxy | 3 | 2 of 3 | 16 (16–16) | 6 (3–6) | 2 (1–2) | 8 (7–11) | 1 (0–1) | 4 (3–4) | 0.375 (0.188–0.375) |
+| T7 | fx | paced | 3 | 3 of 3 | 15 (15–19) | 10 (10–10) | 1 (0–1) | 5 (4–8) | 0 (0–0) | 1 (1–3) | 0.667 (0.526–0.667) |
+| T7 | harness | paced | 3 | 1 of 3 | 24 (24–24) | 7 (6–9) | 3 (3–4) | 14 (12–14) | 0 (0–0) | 1 (1–2) | 0.292 (0.25–0.375) |
+| T9 | fx | paced | 1 | 1 of 1 | 12 (12–12) | 5 (5–5) | 3 (3–3) | 4 (4–4) | 0 (0–0) | 0 (0–0) | 0.417 (0.417–0.417) |
+| T9 | harness | paced | 1 | 0 of 1 | 22 (22–22) | 3 (3–3) | 3 (3–3) | 8 (8–8) | 8 (8–8) | 0 (0–0) | 0.136 (0.136–0.136) |
+
+Notes:
+
+- Medians are taken per column. The label medians do not always add up to the total median.
+- fx labels use the fx stderr activity lines for paths. So fx decoy reads are comparable with Harness decoy reads.
+- Labels for a live model are a best effort. They are not a full replay check.
+- `metrics.json` counts a failing `run_tests` call as a failed call. The labeler scores test runs by result. The "failed" column here is tool errors only (for example a patch that did not match, or a test-tool timeout).
+- n = 3 or less in every row. n = 1 on T9. Do not use these numbers for a claim.
+- **T9 caveat.** Harness T9 useful/total (0.136) and its 8 failed calls come from a test-tool bug (section 11.6), not from tool choice. Compare tool efficiency on T1v2 and T7 only, until T9 is run again after a fix.
+
+Chart: see the HTML report (stacked bars of median labels per row, with decoy reads and useful/total).
+
+### 11.2 Stronger-model cost estimate
+
+Source: `phase4-strong-model-cost.md`. This is an estimate. No run on these models has happened. Shape: 3 tasks (T1v2, T7, T9) × 2 agents × n = 5 = 30 runs per model. Token use is from the Flash-Lite paced runs.
+
+| Model | Low USD | Low INR | High USD | High INR | fx can start |
+|-------|---------|---------|----------|----------|--------------|
+| Gemini 3.1 Pro Preview | 8.45 | 817 | 15.39 | 1,487 | untested |
+| Claude Sonnet 5.5 | 8.42 | 813 | 15.26 | 1,474 | untested |
+| GPT-6.1 Sol | 8.42 | 813 | 15.26 | 1,474 | untested |
+| DeepSeek V4 Pro (peak) | 5.51 | 532 | 9.90 | 957 | untested |
+| All 4 models | 30.80 | 2,975 | 55.81 | 5,392 | — |
+
+fx start check: fx has only been run on Gemini Flash-Lite through our proxy and on Cerebras. Gemini 3.1 Pro uses the same Gemini API, so it is the most likely to work, but nobody has run it. A one-request start check per model is needed before any paid row. That check needs the key for that provider. Do not mark any model 'fx confirmed' without a run file.
+
+FX rate: 1 USD = 96.6149 INR (RBI reference rate, 2026-10-09).
+
+Caveats:
+
+- T9 rests on n = 1 per agent. T9 is the largest share of the cost. Treat T9 as an unknown range.
+- Gemini 3.1 Pro has a higher price above 200k tokens in one prompt (4.00 / 18.00 USD per 1M). We do not have per-request prompt sizes. On T9, one request can go above 200k. Then the Gemini cost is higher than shown.
+- Token counts come from the Gemini tokenizer. Other models count tokens differently. Anthropic says its newer tokenizer gives about 30% more tokens for the same text. That is not in these numbers.
+- Retries after HTTP 429 or timeouts are not in this estimate. They add cost.
+- Harness T7 tokens are capped by the 24-step limit.
+- No prompt-cache discount is modelled.
+
+### 11.3 Startup and memory
+
+Source: `first-head-to-head.md`, section "Startup and peak memory" (commit `d1ef97f`). Box: Linux, 8 vCPU, 16 GB RAM, shared with other work.
+
+| Measure | Harness | fx | Note |
+|---|---|---|---|
+| Startup, no model (`harness version` / `fx --version`), median of 10 | 3.1 ms | 2.4 ms | Includes wrapper fork/exec, same for both |
+| Max RSS, same commands | about 4 MB (3,760–4,096 KB) | 1.5 MB (1,460 KB) | |
+| Peak RSS under scripted load | about 168 MB (median 168,308 KB, 5 runs) | pending | Harness number includes the `cargo test` child process. fx has no scripted mode, so fx peak needs live runs. |
+
+### 11.4 T7 and T9 status
+
+All T7 and T9 runs are finished. No run is still in progress.
+
+**T7 limitation: the step limits were not equal.**
+
+- Harness ran with `--max-steps 24`.
+- fx ran with no `FX_MAX_AGENT_STEPS`. `fx status` showed `agent_step_limit=0`. We read 0 as "no step limit". That reading is inferred, not documented.
+- fx used 15, 15 and 19 steps.
+- All 3 Harness T7 runs stopped at 24 steps (`done` status `MaxSteps` in each `run.jsonl`). One of the 3 was green (H2). Result: Harness 1 of 3, fx 3 of 3.
+- **H2 status bug.** `metrics.json` for H2 says `success`, but H2 stopped at the step limit. Cause: `harness-cli/src/metrics.rs` lines 272–274. Any passing test call overwrites the stop reason with success. This is not fixed. Bench doc `fff2514` now gives oracle success and stop reason in separate columns.
+- **Rule:** success = operator (oracle) `cargo test` passes. A step-limit stop is recorded separately.
+- Labeler: Harness median 3 unnecessary calls, fx median 1.
+- So T7 is not a fair test of success or of unnecessary calls. A rerun with `FX_MAX_AGENT_STEPS=24` for fx is pending.
+
+**T9: usable and unusable runs.**
+
+- Usable: 1 run per agent (fx `T9-trackB-fx-paced-F1`, Harness `T9-trackB-harness-paced-H1`).
+- Not usable: `T9-trackB-fx-paced-F2` (exit 124, timeout) and `T9-trackB-fx-paced15-F1` (incomplete, no exit file).
+- Harness T9: 8 of 22 labeled calls were test-tool timeouts (one at 120 s, the other 7 at 30 s). The run also got 10 HTTP 429s.
+- v2 called this a candidate weakness. The scripted test in section 11.6 now confirms the timeout as a Harness test-tool bug.
+- **T9 caveat.** Harness T9 useful/total (0.136) and its 8 failed calls come from a test-tool bug (section 11.6), not from tool choice. Compare tool efficiency on T1v2 and T7 only, until T9 is run again after a fix.
+
+### 11.5 T7 equal-limit rerun: pending
+
+No data yet. Plan: fx with `FX_MAX_AGENT_STEPS=24`, Harness with `--max-steps 24`, same model, proxy and pacing as T7.
+
+### 11.6 T9 scripted timeout test: result
+
+Source: Mike (team input). Repro on local branch `bench/t9-timeout-repro` (`e300dfe`). Not on main.
+
+**Test.** Model-free scripted runs on 2 tasks: `noisy_tests_v1`, and a copy of `broken_calc_v2` with one test that prints 400 KB. Each task had 3 runs after a cold build and 3 runs after a warm build.
+
+**Result.**
+
+- All 12 runs timed out.
+- The same commands finish in 50–100 ms when the output goes to a file.
+- Build time was 0.5–4.5 s cold and 18–84 ms warm. This is far below the time limits.
+- The model got only `ERROR: tool failed: cargo test: timeout 120s`. It got no test names. This is the same as the live run H1.
+
+**Cause (in `harness-tools`, not in core).**
+
+- The test tool sends the test output to a pipe. It then only checks if the process has stopped. It does not read the pipe.
+- The pipe buffer is 64 KiB. When the output is larger, the child process stops and waits. The time limit then stops the call.
+- Code: `tests_tool.rs` lines 43–65, `shell.rs` lines 54–77. `git.rs` lines 17–35 has the same pattern.
+- Also, `kill()` stops only the direct child process. Test processes can continue to run after the call stops.
+
+**Proposed fix (not built).** Read the output while the process runs. Keep only a bounded amount. Keep the time limit. Change `harness-tools` only.
+
+**Status.** Confirmed on 2 tasks with no rate limit. So it meets Harsha's rule for the fix list (see section 9.2). No fix work starts before Harsha's review.
 
 ---
 
@@ -479,7 +602,7 @@ Date 2026-10-11 (IST). Harness SHA `2a6168ce486347d051a649a33636af782ebcaa8e`. f
 
 ("fail" = tool_result without ok=true.) Finished: Harness 3/3, fx 0/1. Harness finished-run wall time min/median/max: 9386 / 10321 / 22459 ms. fx: no finished runs; F2–F3 not attempted because F1 failed before any model turn.
 
-**fx InvalidChunk cause:** not quota — a direct streaming curl to the same endpoint/model returned HTTP 200 immediately before and after F1, and no 429 occurred in this session. The fx failure happened in 692 ms with 0 steps. Gemini's OpenAI-compatible stream chunks are non-standard: tool_call deltas carry no `index` field and include a provider-specific `extra_content` field, the role is repeated on every chunk, the final chunk has a delta with only `extra_content`, and `usage` appears on every chunk. The cause is most likely fx's chunk parser rejecting this stream shape. fx 0.0.13 `ask` has no documented non-streaming option. fx was not patched.
+**fx InvalidChunk cause:** not quota — a direct streaming curl to the same endpoint/model returned HTTP 200 immediately before and after F1, and no 429 occurred in this session. The fx failure happened in 692 ms with 0 steps. Gemini's OpenAI-compatible stream chunks are non-standard: tool_call deltas carry no `index` field and include a provider-specific extra field, the role is repeated on every chunk, the final chunk has a delta with only that extra field, and `usage` appears on every chunk. The cause is most likely fx's chunk parser rejecting this stream shape. fx 0.0.13 `ask` has no documented non-streaming option. fx was not patched.
 
 **Controlled:** model id, endpoint, key/tier, TASK.md prompt (exact fenced text), fresh fixture copy with `target/` removed, no ORACLE.md, 8-min timeout, machine, operator `cargo test` as success check.
 **Uncontrolled:** tool surface (Harness coding+shell vs fx built-in tools), permission mode (Harness `--allow coding,shell` vs fx `--full-access`), system prompts, streaming handling (fx streams; whether streaming succeeds depends on how each client parses the stream), step cap (Harness 24; fx default).
@@ -488,8 +611,8 @@ Date 2026-10-11 (IST). Harness SHA `2a6168ce486347d051a649a33636af782ebcaa8e`. f
 
 Label: **same weak model, free tier**. This set has its own table and is not pooled with r1–r5 or L1–L3. Date 2026-10-11 (IST). Harness binary built at SHA `2a6168c` (harness crates unchanged since). fx 0.0.13 (/tmp/fxbin), not patched. Model `gemini-3.5-flash-lite`, same key, free tier. Proxy at `db0915b` + `37c488f`, reviewed by Jessie. Run order: F1, P1, F2, P2, F3, P3, with 60 s between runs and a fresh proxy process for each run.
 
-**Controlled difference: the stream proxy.** Both agents talked to `http://127.0.0.1:8787` → `generativelanguage.googleapis.com/v1beta/openai` through [`native/benchmarks/tools/oai_stream_proxy`](../../native/benchmarks/tools/oai_stream_proxy/README.md). The README lists every rewrite: tool_call `index` added, `extra_content` stripped, empty-delta chunks dropped, `usage` only on the last chunk, `finish_reason` `stop`→`tool_calls` after tool calls, `[DONE]` passed through.
-**Signature handling (controlled difference):** the proxy keeps Gemini's signature field (`extra_content.google.thought_signature`) in memory, keyed by tool_call id, and adds it back to outgoing requests that lack it. Without that, Gemini returns HTTP 400 on turn 2 (tested with `PROXY_SIG_MODE=strip`). fx needs the re-add. Harness's adapter round-trips that field itself when it receives it, but behind the proxy it never receives it, so Harness requests also rely on the proxy re-adding it. Both agents therefore send identical signature data.
+**Controlled difference: the stream proxy.** Both agents talked to `http://127.0.0.1:8787` → `generativelanguage.googleapis.com/v1beta/openai` through [`native/benchmarks/tools/oai_stream_proxy`](../../native/benchmarks/tools/oai_stream_proxy/README.md). The README lists every rewrite: tool_call `index` added, provider extra field stripped, empty-delta chunks dropped, `usage` only on the last chunk, `finish_reason` `stop`→`tool_calls` after tool calls, `[DONE]` passed through.
+**Signature handling (controlled difference):** the proxy keeps Gemini's signature field in memory, keyed by tool_call id, and adds it back to outgoing requests that lack it. Without that, Gemini returns HTTP 400 on turn 2 (tested with `PROXY_SIG_MODE=strip`). fx needs the re-add. Harness's adapter round-trips that field itself when it receives it, but behind the proxy it never receives it, so Harness requests also rely on the proxy re-adding it. Both agents therefore send identical signature data.
 
 | Label | Agent | Run | Success (operator `cargo test` exit) | wall_ms | retries | retry_wait_ms | model turns / fx steps | tool calls ok/fail/dup | files read / modified | tokens (in/out) | stop reason |
 |---|---|---|---|---|---|---|---|---|---|---|---|
@@ -610,4 +733,4 @@ Medians of ok/fail/dup are taken per column. fx steps and Harness model turns me
 
 ---
 
-*End of report. T7 and T9 sections will be added to `first-head-to-head.md` when those runs finish. This report will need an update then.*
+*End of report (v2, 11 Oct 2026 IST). Update this report after the T7 equal-limit rerun and the T9 rerun after the fix.*

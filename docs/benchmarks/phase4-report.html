@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Harness — Phase 4 visual report (interim, T7/T9 pending)</title>
+<title>Harness — Phase 4 visual report (v2)</title>
 <style>
 :root{--h:#2563eb;--f:#d97706;--ink:#0f172a;--mut:#475569;--line:#e2e8f0;--bg:#f8fafc}
 *{box-sizing:border-box}
@@ -70,9 +70,10 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
 <div class="wrap">
 
 <header class="top">
-  <h1>Harness — Phase 4 visual report</h1>
-  <p class="status"><b>Status:</b> Interim. We have one fair paired row (T1 v2). Both agents solved it 3 of 3 times. T7 and T9 are pending. We make no win claim.</p>
-  <p class="meta">Date: 2026-10-11 (IST) · Repo commit used: <code>ecc89dc7152a492213f5b4a4b330dac069624c87</code> (main, "docs: Phase 4 gains/losses report (T7/T9 pending)") · Fact source of truth: <code>docs/benchmarks/phase4-report.md</code> at <code>ecc89dc</code> · fx under test: v0.0.13, build <code>4d966e272cfc</code></p>
+  <h1>Harness — Phase 4 visual report (v2)</h1>
+  <p class="status"><b>Status:</b> Interim. We have one fair paired row (T1 v2). Both agents solved it 3 of 3 times. T7 and T9 runs are finished. T9 has only 1 usable run per agent. The T9 timeout is confirmed as a test-tool bug. The T7 equal-limit rerun is pending. We make no win claim.</p>
+  <p class="status"><b>Rule:</b> No feature work and no win claims before Harsha's review.</p>
+  <p class="meta">Version: v2 · Date: 11 Oct 2026 (IST) · v1 base: Repo commit used: <code>ecc89dc7152a492213f5b4a4b330dac069624c87</code> (main, "docs: Phase 4 gains/losses report (T7/T9 pending)") · Fact source of truth: <code>docs/benchmarks/phase4-report.md</code> at <code>ecc89dc</code> · fx under test: v0.0.13, build <code>4d966e272cfc</code></p>
   <div class="badges">
     <span class="b g">Python core <i>frozen (ADR-003)</i></span>
     <span class="b g">Native Rust agent <i>working</i></span>
@@ -81,7 +82,7 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
     <span class="b y">Gate reading <i>F at most, close to G</i></span>
     <span class="b bl">Core changes in Phase 4 <i>1 (bug fix, PR #10)</i></span>
     <span class="b bl">New ADRs in Phase 4 <i>0</i></span>
-    <span class="b y">T7 / T9 <i>pending</i></span>
+    <span class="b y">T7 / T9 <i>finished; reruns pending</i></span>
     <span class="b r">Deny-all tested live <i>no</i></span>
     <span class="b r">OS sandbox <i>none, no claim</i></span>
   </div>
@@ -90,7 +91,7 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
 
 <section id="phase">
   <h2>Whole phase in one paragraph</h2>
-  <p>Phase 4 had one goal: one reproducible, fair row against fx. We worked in measurement mode and added no features. We ran 8 live sets on one task family (T1). Most sets are weak. The first fixture (T1 v1) had fix hints in the source. Some sets failed because one agent could not start on a provider. Free-tier quota stopped other sets. The one fair row is T1 v2 on <code>gemini-3.5-flash-lite</code>, through our bench proxy, with 5 s pacing for both agents. In that row both agents solved the task 3 of 3 times. Harness used fewer input tokens on this one task. We also found and fixed two real key-leak bugs. The data does not yet name a Harness weakness to fix. T7 and T9 runs are in progress.</p>
+  <p>Phase 4 had one goal: one reproducible, fair row against fx. We worked in measurement mode and added no features. We ran 8 live sets on one task family (T1). Most sets are weak. The first fixture (T1 v1) had fix hints in the source. Some sets failed because one agent could not start on a provider. Free-tier quota stopped other sets. The one fair row is T1 v2 on <code>gemini-3.5-flash-lite</code>, through our bench proxy, with 5 s pacing for both agents. In that row both agents solved the task 3 of 3 times. Harness used fewer input tokens on this one task. We also found and fixed two real key-leak bugs. A model-free scripted test found one Harness bug: the test and shell tools block when output is larger than 64 KiB. It is on the fix list. It is not built.</p>
 </section>
 
 <section id="summary">
@@ -102,14 +103,14 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
     <li><b>Wall time minus pacing:</b> Harness 11.0 s, fx 12.8 s (medians). This is close. We make no speed claim.</li>
     <li><b>Under quota pressure,</b> Harness stopped on a 429 in 1 of 3 unpaced runs. fx finished 3 of 3. A rate limit was in play, so this is a "watch" item, not a "fix" item.</li>
     <li><b>Security:</b> we found and fixed two key-leak bugs in the scrub code. No key appeared in any run folder, doc or commit.</li>
-    <li><b>What to build next:</b> nothing yet. Add tasks. T7 and T9 must answer first.</li>
+    <li><b>What to build next:</b> one fix item qualifies (test-tool output, <code>harness-tools</code>). Not built before Harsha's review. T7 is not a fair test (unequal step limits).</li>
   </ul>
   <p class="src"><b>Source:</b> <code>docs/benchmarks/phase4-report.md</code> §1, §3–§5, §9 at <code>ecc89dc</code>; <code>docs/benchmarks/first-head-to-head.md</code> "T1 v2 … paced 5 s".</p>
 </section>
 
 <section id="timeline">
   <h2>2. Project timeline</h2>
-  <ol class="tl"><li class=""><div class="tl-d">2026-09-19 <span class="ph">Phase 1</span></div><div class="tl-t">Python core spike. ADR-001 (tiny core), ADR-002 (model adapters as plugins), ADR-003 (protocol freeze) accepted.</div><div class="tl-c"><code>951a3e6 · 278bbee</code></div></li><li class=""><div class="tl-d">2026-09-19 <span class="ph">Phase 2</span></div><div class="tl-t">Coding plugins, path guard, MUST/SHOULD benches. All six Phase 2 goals pass.</div><div class="tl-c"><code>80210be · fd8666f · 54f253d</code></div></li><li class=""><div class="tl-d">2026-09-20 <span class="ph">Product</span></div><div class="tl-t">ADR-004 (coding agent = Python pack + plugins) and ADR-005 (Rust native agent) accepted. Native scaffold and min tool pack.</div><div class="tl-c"><code>48fd8a0 · 6c36766 · 4907b8d</code></div></li><li class=""><div class="tl-d">2026-09-21 → 09-30 <span class="ph">Phase 3</span></div><div class="tl-t">Native loop model → tools → edit → test. Record/replay. metrics.json (phase3.v1). broken_calc fixture.</div><div class="tl-c"><code>8398802 · 337c8d3 · b912833</code></div></li><li class="p4"><div class="tl-d">2026-10-02 <span class="ph">Phase 4 opens</span></div><div class="tl-t">Bench method and T1 task pack. Track A scripted row (553 ms).</div><div class="tl-c"><code>662aabb · 14fafac</code></div></li><li class="p4"><div class="tl-d">2026-10-04 <span class="ph">Phase 4</span></div><div class="tl-t">Gemini Flash r1, r2: timeout and 503. No retry yet.</div><div class="tl-c"><code>e435905 · 47a1537</code></div></li><li class="p4"><div class="tl-d">2026-10-11 07:43–08:34 <span class="ph">Phase 4</span></div><div class="tl-t">Retry (outside core), Flash-Lite sets, stream proxy, two scrub fixes, core PR #10, token capture, Cerebras set, T1 v2 frozen.</div><div class="tl-c"><code>29d1f58 → 20baad1</code></div></li><li class="p4"><div class="tl-d">2026-10-11 09:27–10:57 <span class="ph">Phase 4</span></div><div class="tl-t">T1 v2 Track A, unpaced and paced sets, proxy pacing, T7/T9 frozen, gains/losses report.</div><div class="tl-c"><code>e013766 → ecc89dc</code></div></li><li class="pend"><div class="tl-d">now <span class="ph">Pending</span></div><div class="tl-t">T7 and T9 paced runs in progress. Not in this report.</div><div class="tl-c"><code>—</code></div></li></ol>
+  <ol class="tl"><li class=""><div class="tl-d">2026-09-19 <span class="ph">Phase 1</span></div><div class="tl-t">Python core spike. ADR-001 (tiny core), ADR-002 (model adapters as plugins), ADR-003 (protocol freeze) accepted.</div><div class="tl-c"><code>951a3e6 · 278bbee</code></div></li><li class=""><div class="tl-d">2026-09-19 <span class="ph">Phase 2</span></div><div class="tl-t">Coding plugins, path guard, MUST/SHOULD benches. All six Phase 2 goals pass.</div><div class="tl-c"><code>80210be · fd8666f · 54f253d</code></div></li><li class=""><div class="tl-d">2026-09-20 <span class="ph">Product</span></div><div class="tl-t">ADR-004 (coding agent = Python pack + plugins) and ADR-005 (Rust native agent) accepted. Native scaffold and min tool pack.</div><div class="tl-c"><code>48fd8a0 · 6c36766 · 4907b8d</code></div></li><li class=""><div class="tl-d">2026-09-21 → 09-30 <span class="ph">Phase 3</span></div><div class="tl-t">Native loop model → tools → edit → test. Record/replay. metrics.json (phase3.v1). broken_calc fixture.</div><div class="tl-c"><code>8398802 · 337c8d3 · b912833</code></div></li><li class="p4"><div class="tl-d">2026-10-02 <span class="ph">Phase 4 opens</span></div><div class="tl-t">Bench method and T1 task pack. Track A scripted row (553 ms).</div><div class="tl-c"><code>662aabb · 14fafac</code></div></li><li class="p4"><div class="tl-d">2026-10-04 <span class="ph">Phase 4</span></div><div class="tl-t">Gemini Flash r1, r2: timeout and 503. No retry yet.</div><div class="tl-c"><code>e435905 · 47a1537</code></div></li><li class="p4"><div class="tl-d">2026-10-11 07:43–08:34 <span class="ph">Phase 4</span></div><div class="tl-t">Retry (outside core), Flash-Lite sets, stream proxy, two scrub fixes, core PR #10, token capture, Cerebras set, T1 v2 frozen.</div><div class="tl-c"><code>29d1f58 → 20baad1</code></div></li><li class="p4"><div class="tl-d">2026-10-11 09:27–10:57 <span class="ph">Phase 4</span></div><div class="tl-t">T1 v2 Track A, unpaced and paced sets, proxy pacing, T7/T9 frozen, gains/losses report.</div><div class="tl-c"><code>e013766 → ecc89dc</code></div></li><li class="p4"><div class="tl-d">2026-10-11 <span class="ph">Phase 4</span></div><div class="tl-t">T7 and T9 paced runs finished. Startup and memory measured. Oracle labeler. Cost estimate.</div><div class="tl-c"><code>d986eb2 · d1ef97f · 92ceba8 · b592ecf</code></div></li><li class="pend"><div class="tl-d">now <span class="ph">Pending</span></div><div class="tl-t">T7 equal-limit rerun. T9 rerun after the test-tool fix.</div><div class="tl-c"><code>—</code></div></li></ol>
   <p class="src"><b>Source:</b> <code>git log</code> on main at <code>ecc89dc</code>. Times are IST. Some commits carry UTC times; we converted them (+5:30).</p>
 </section>
 
@@ -197,31 +198,80 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
   </table>
   <p class="src"><b>Source:</b> <code>docs/benchmarks/phase4-report.md</code> §2.3, §5, Appendix A.1–A.9 at <code>ecc89dc</code>. <span class="kind measured">Measured</span></p>
 
-  <h3>Pending: T7 and T9</h3>
+  <h3>T7 and T9 (finished; see section 4b)</h3>
   <div class="grid2">
-    <div class="card pending"><h4>T7 large_repo_v1 <span class="b y">pending</span></h4>
+    <div class="card pending"><h4>T7 large_repo_v1 <span class="b y">finished</span></h4>
       <p>Frozen at <code>2a99d06</code>. 173 files, 8,325,651 bytes. Decoy files present. Hint scan recorded; <code>leaks_implementation_in_tree: false</code>.</p>
       <p>Measures how much context an agent reads to find a bug in a big repo.</p>
       <p><b>Key question:</b> does the token gap hold at equal pacing? Per Thomas, the T1 v2 token gap counts as a strength only if it holds here.</p>
-      <p><b>Results:</b> not in this report.</p></div>
-    <div class="card pending"><h4>T9 noisy_tests_v1 <span class="b y">pending</span></h4>
+      <p><b>Results:</b> see section 4b.</p></div>
+    <div class="card pending"><h4>T9 noisy_tests_v1 <span class="b y">finished</span></h4>
       <p>Frozen at <code>2a99d06</code>. Baseline <code>cargo test</code> output is 431,640 bytes. <code>leaks_implementation_in_tree: false</code>.</p>
       <p>Measures how an agent handles very large test output.</p>
       <p><b>Design note:</b> the 32 KiB cap is in core and keeps the head. If the failing test name is cut off, the fix belongs in the test tool (failures first), not in the core cap. A core change needs T9 data and an ADR.</p>
-      <p><b>Results:</b> not in this report.</p></div>
+      <p><b>Results:</b> see section 4b.</p></div>
   </div>
-  <p class="src"><b>Source:</b> <code>native/benchmarks/head_to_head/T7_large_repo/{manifest.json,ORACLE.md}</code>, <code>T9_noisy_tests/{manifest.json,ORACLE.md}</code>; <code>phase4-report.md</code> §2.1, §4 W4, "T7 and T9 results: pending".</p>
+  <p class="src"><b>Source:</b> <code>native/benchmarks/head_to_head/T7_large_repo/{manifest.json,ORACLE.md}</code>, <code>T9_noisy_tests/{manifest.json,ORACLE.md}</code>; <code>phase4-report.md</code> §2.1, §4 W4, "T7 and T9: questions".</p>
+</section>
+
+<section id="v2">
+  <h2>4b. v2 additions (11 Oct 2026 IST)</h2>
+  <h3>Tool-call labels <span class="kind derived">Derived</span></h3>
+  <p>The oracle labeler gives each tool call one label: useful, unnecessary, neutral or failed. A decoy read is neutral, but it is counted. Values are median (min–max). "Green" = runs where operator <code>cargo test</code> passed. Only complete runs are counted.</p>
+  <div class="chart"><h3>Median labels per task and agent</h3><svg viewBox="0 0 1000 352" role="img" aria-label="Tool-call labels per task and agent (medians)"><line x1="260" x2="260" y1="20" y2="312" class="grid"/><text x="260" y="326" class="ax" text-anchor="middle">0</text><line x1="360" x2="360" y1="20" y2="312" class="grid"/><text x="360" y="326" class="ax" text-anchor="middle">5</text><line x1="460" x2="460" y1="20" y2="312" class="grid"/><text x="460" y="326" class="ax" text-anchor="middle">10</text><line x1="560" x2="560" y1="20" y2="312" class="grid"/><text x="560" y="326" class="ax" text-anchor="middle">15</text><line x1="660" x2="660" y1="20" y2="312" class="grid"/><text x="660" y="326" class="ax" text-anchor="middle">20</text><line x1="760" x2="760" y1="20" y2="312" class="grid"/><text x="760" y="326" class="ax" text-anchor="middle">25</text><text x="252" y="39" class="lab" text-anchor="end">T1v2 fx paced (n=3, green 3)</text><rect x="260" y="24" width="120.0" height="20" fill="#16a34a"><title>useful median 6</title></rect><text x="320.0" y="38" font-size="11" fill="#fff" text-anchor="middle">6</text><rect x="380.0" y="24" width="60.0" height="20" fill="#94a3b8"><title>neutral median 3</title></rect><text x="410.0" y="38" font-size="11" fill="#fff" text-anchor="middle">3</text><text x="446.0" y="39" class="val">decoy 0 · useful/total 0.6</text><text x="252" y="73" class="lab" text-anchor="end">T1v2 fx proxy (n=3, green 3)</text><rect x="260" y="58" width="140.0" height="20" fill="#16a34a"><title>useful median 7</title></rect><text x="330.0" y="72" font-size="11" fill="#fff" text-anchor="middle">7</text><rect x="400.0" y="58" width="20.0" height="20" fill="#dc2626"><title>unnecessary median 1</title></rect><text x="410.0" y="72" font-size="11" fill="#fff" text-anchor="middle">1</text><rect x="420.0" y="58" width="80.0" height="20" fill="#94a3b8"><title>neutral median 4</title></rect><text x="460.0" y="72" font-size="11" fill="#fff" text-anchor="middle">4</text><rect x="500.0" y="58" width="60.0" height="20" fill="#7c3aed"><title>failed median 3</title></rect><text x="530.0" y="72" font-size="11" fill="#fff" text-anchor="middle">3</text><text x="566.0" y="73" class="val">decoy 0 · useful/total 0.474</text><text x="252" y="107" class="lab" text-anchor="end">T1v2 harness paced (n=3, green 3)</text><rect x="260" y="92" width="120.0" height="20" fill="#16a34a"><title>useful median 6</title></rect><text x="320.0" y="106" font-size="11" fill="#fff" text-anchor="middle">6</text><rect x="380.0" y="92" width="20.0" height="20" fill="#dc2626"><title>unnecessary median 1</title></rect><text x="390.0" y="106" font-size="11" fill="#fff" text-anchor="middle">1</text><rect x="400.0" y="92" width="120.0" height="20" fill="#94a3b8"><title>neutral median 6</title></rect><text x="460.0" y="106" font-size="11" fill="#fff" text-anchor="middle">6</text><text x="526.0" y="107" class="val">decoy 1 · useful/total 0.462</text><text x="252" y="141" class="lab" text-anchor="end">T1v2 harness proxy (n=3, green 2)</text><rect x="260" y="126" width="120.0" height="20" fill="#16a34a"><title>useful median 6</title></rect><text x="320.0" y="140" font-size="11" fill="#fff" text-anchor="middle">6</text><rect x="380.0" y="126" width="40.0" height="20" fill="#dc2626"><title>unnecessary median 2</title></rect><text x="400.0" y="140" font-size="11" fill="#fff" text-anchor="middle">2</text><rect x="420.0" y="126" width="160.0" height="20" fill="#94a3b8"><title>neutral median 8</title></rect><text x="500.0" y="140" font-size="11" fill="#fff" text-anchor="middle">8</text><rect x="580.0" y="126" width="20.0" height="20" fill="#7c3aed"><title>failed median 1</title></rect><text x="590.0" y="140" font-size="11" fill="#fff" text-anchor="middle">1</text><text x="606.0" y="141" class="val">decoy 4 · useful/total 0.375</text><text x="252" y="175" class="lab" text-anchor="end">T7 fx paced (n=3, green 3)</text><rect x="260" y="160" width="200.0" height="20" fill="#16a34a"><title>useful median 10</title></rect><text x="360.0" y="174" font-size="11" fill="#fff" text-anchor="middle">10</text><rect x="460.0" y="160" width="20.0" height="20" fill="#dc2626"><title>unnecessary median 1</title></rect><text x="470.0" y="174" font-size="11" fill="#fff" text-anchor="middle">1</text><rect x="480.0" y="160" width="100.0" height="20" fill="#94a3b8"><title>neutral median 5</title></rect><text x="530.0" y="174" font-size="11" fill="#fff" text-anchor="middle">5</text><text x="586.0" y="175" class="val">decoy 1 · useful/total 0.667</text><text x="252" y="209" class="lab" text-anchor="end">T7 harness paced (n=3, green 1)</text><rect x="260" y="194" width="140.0" height="20" fill="#16a34a"><title>useful median 7</title></rect><text x="330.0" y="208" font-size="11" fill="#fff" text-anchor="middle">7</text><rect x="400.0" y="194" width="60.0" height="20" fill="#dc2626"><title>unnecessary median 3</title></rect><text x="430.0" y="208" font-size="11" fill="#fff" text-anchor="middle">3</text><rect x="460.0" y="194" width="280.0" height="20" fill="#94a3b8"><title>neutral median 14</title></rect><text x="600.0" y="208" font-size="11" fill="#fff" text-anchor="middle">14</text><text x="746.0" y="209" class="val">decoy 1 · useful/total 0.292</text><text x="252" y="243" class="lab" text-anchor="end">T9 fx paced (n=1, green 1)</text><rect x="260" y="228" width="100.0" height="20" fill="#16a34a"><title>useful median 5</title></rect><text x="310.0" y="242" font-size="11" fill="#fff" text-anchor="middle">5</text><rect x="360.0" y="228" width="60.0" height="20" fill="#dc2626"><title>unnecessary median 3</title></rect><text x="390.0" y="242" font-size="11" fill="#fff" text-anchor="middle">3</text><rect x="420.0" y="228" width="80.0" height="20" fill="#94a3b8"><title>neutral median 4</title></rect><text x="460.0" y="242" font-size="11" fill="#fff" text-anchor="middle">4</text><text x="506.0" y="243" class="val">decoy 0 · useful/total 0.417</text><text x="252" y="277" class="lab" text-anchor="end">T9 harness paced (n=1, green 0)</text><rect x="260" y="262" width="60.0" height="20" fill="#16a34a"><title>useful median 3</title></rect><text x="290.0" y="276" font-size="11" fill="#fff" text-anchor="middle">3</text><rect x="320.0" y="262" width="60.0" height="20" fill="#dc2626"><title>unnecessary median 3</title></rect><text x="350.0" y="276" font-size="11" fill="#fff" text-anchor="middle">3</text><rect x="380.0" y="262" width="160.0" height="20" fill="#94a3b8"><title>neutral median 8</title></rect><text x="460.0" y="276" font-size="11" fill="#fff" text-anchor="middle">8</text><rect x="540.0" y="262" width="160.0" height="20" fill="#7c3aed"><title>failed median 8</title></rect><text x="620.0" y="276" font-size="11" fill="#fff" text-anchor="middle">8</text><text x="706.0" y="277" class="val">decoy 0 · useful/total 0.136</text><rect x="260" y="336" width="12" height="12" fill="#16a34a"/><text x="276" y="346" class="ax">useful</text><rect x="380" y="336" width="12" height="12" fill="#dc2626"/><text x="396" y="346" class="ax">unnecessary</text><rect x="500" y="336" width="12" height="12" fill="#94a3b8"/><text x="516" y="346" class="ax">neutral</text><rect x="620" y="336" width="12" height="12" fill="#7c3aed"/><text x="636" y="346" class="ax">failed</text><text x="740" y="346" class="ax">calls (median per label)</text></svg><p class="legend">Medians per label. They do not always add up to the total median. n is 3 or less in every row, and 1 on T9.</p></div>
+  <div class="warn"><b>T9 caveat.</b> Harness T9 useful/total (0.136) and its 8 failed calls come from a test-tool bug (see "T9 scripted timeout test" below), not from tool choice. Compare tool efficiency on T1v2 and T7 only, until T9 is run again after a fix.</div>
+  <table><tr><th>Task</th><th>Agent</th><th>Mode</th><th>n</th><th>Green</th><th>Total</th><th>Useful</th><th>Unnec.</th><th>Neutral</th><th>Failed</th><th>Decoy reads</th><th>Useful/total</th></tr><tr><td>T1v2</td><td>fx</td><td>paced</td><td class=num>3</td><td class=num>3 of 3</td><td class=num>10 (8–14)</td><td class=num>6 (6–7)</td><td class=num>0 (0–3)</td><td class=num>3 (2–4)</td><td class=num>0 (0–1)</td><td class=num>0 (0–0)</td><td class=num>0.6 (0.5–0.75)</td></tr><tr><td>T1v2</td><td>fx</td><td>proxy</td><td class=num>3</td><td class=num>3 of 3</td><td class=num>14 (13–19)</td><td class=num>7 (6–9)</td><td class=num>1 (1–2)</td><td class=num>4 (3–5)</td><td class=num>3 (1–4)</td><td class=num>0 (0–1)</td><td class=num>0.474 (0.462–0.5)</td></tr><tr><td>T1v2</td><td>harness</td><td>paced</td><td class=num>3</td><td class=num>3 of 3</td><td class=num>13 (11–15)</td><td class=num>6 (6–6)</td><td class=num>1 (1–1)</td><td class=num>6 (4–8)</td><td class=num>0 (0–0)</td><td class=num>1 (0–3)</td><td class=num>0.462 (0.4–0.545)</td></tr><tr><td>T1v2</td><td>harness</td><td>proxy</td><td class=num>3</td><td class=num>2 of 3</td><td class=num>16 (16–16)</td><td class=num>6 (3–6)</td><td class=num>2 (1–2)</td><td class=num>8 (7–11)</td><td class=num>1 (0–1)</td><td class=num>4 (3–4)</td><td class=num>0.375 (0.188–0.375)</td></tr><tr><td>T7</td><td>fx</td><td>paced</td><td class=num>3</td><td class=num>3 of 3</td><td class=num>15 (15–19)</td><td class=num>10 (10–10)</td><td class=num>1 (0–1)</td><td class=num>5 (4–8)</td><td class=num>0 (0–0)</td><td class=num>1 (1–3)</td><td class=num>0.667 (0.526–0.667)</td></tr><tr><td>T7</td><td>harness</td><td>paced</td><td class=num>3</td><td class=num>1 of 3</td><td class=num>24 (24–24)</td><td class=num>7 (6–9)</td><td class=num>3 (3–4)</td><td class=num>14 (12–14)</td><td class=num>0 (0–0)</td><td class=num>1 (1–2)</td><td class=num>0.292 (0.25–0.375)</td></tr><tr><td>T9</td><td>fx</td><td>paced</td><td class=num>1</td><td class=num>1 of 1</td><td class=num>12 (12–12)</td><td class=num>5 (5–5)</td><td class=num>3 (3–3)</td><td class=num>4 (4–4)</td><td class=num>0 (0–0)</td><td class=num>0 (0–0)</td><td class=num>0.417 (0.417–0.417)</td></tr><tr><td>T9</td><td>harness</td><td>paced</td><td class=num>1</td><td class=num>0 of 1</td><td class=num>22 (22–22)</td><td class=num>3 (3–3)</td><td class=num>3 (3–3)</td><td class=num>8 (8–8)</td><td class=num>8 (8–8)</td><td class=num>0 (0–0)</td><td class=num>0.136 (0.136–0.136)</td></tr></table>
+  <div class="warn"><b>Definition difference.</b> <code>metrics.json</code> counts a failing <code>run_tests</code> call as a failed call. The labeler scores test runs by result. "Failed" here means tool errors only. <b>fx dup 4</b> (T1 v2 paced, section 4) is not verifiable from fx raw output, because <code>stdout.txt</code> has no tool arguments.</div>
+  <div class="info"><b>Correction from v1.</b> v1 said that fx output has no file paths. That is wrong. fx stderr has one activity line per tool call with the path. The labeler uses these lines. So decoy reads are comparable between the agents.</div>
+  <p class="src"><b>Source:</b> <code>docs/benchmarks/data/phase4_tool_labels.csv</code>; <code>native/benchmarks/tools/README-labels.md</code>.</p>
+
+  <h3>Stronger-model cost estimate <span class="kind derived">Derived</span></h3>
+  <p>Estimate only. No run on these models has happened. 3 tasks × 2 agents × n = 5 = 30 runs per model. Token use is from the Flash-Lite paced runs. 1 USD = 96.6149 INR (RBI, 2026-10-09).</p>
+  <div class="chart"><h3>Cost per model, 30 runs</h3><svg viewBox="0 0 1000 230" role="img" aria-label="Estimated cost per model, 30 runs, USD"><line x1="230" x2="230" y1="10" y2="190" class="grid"/><text x="230" y="206" class="ax" text-anchor="middle">0</text><line x1="430" x2="430" y1="10" y2="190" class="grid"/><text x="430" y="206" class="ax" text-anchor="middle">5</text><line x1="630" x2="630" y1="10" y2="190" class="grid"/><text x="630" y="206" class="ax" text-anchor="middle">10</text><line x1="830" x2="830" y1="10" y2="190" class="grid"/><text x="830" y="206" class="ax" text-anchor="middle">15</text><line x1="1030" x2="1030" y1="10" y2="190" class="grid"/><text x="1030" y="206" class="ax" text-anchor="middle">20</text><text x="222" y="32" class="lab" text-anchor="end">Gemini 3.1 Pro Preview</text><rect x="230" y="14" width="615.6" height="28" fill="#fde68a"/><rect x="230" y="20" width="338.0" height="16" fill="#2563eb"/><text x="851.6" y="32" class="val">low 8.45 / high 15.39 USD</text><text x="222" y="76" class="lab" text-anchor="end">Claude Sonnet 5.5</text><rect x="230" y="58" width="610.4" height="28" fill="#fde68a"/><rect x="230" y="64" width="336.8" height="16" fill="#2563eb"/><text x="846.4" y="76" class="val">low 8.42 / high 15.26 USD</text><text x="222" y="120" class="lab" text-anchor="end">GPT-6.1 Sol</text><rect x="230" y="102" width="610.4" height="28" fill="#fde68a"/><rect x="230" y="108" width="336.8" height="16" fill="#2563eb"/><text x="846.4" y="120" class="val">low 8.42 / high 15.26 USD</text><text x="222" y="164" class="lab" text-anchor="end">DeepSeek V4 Pro (peak)</text><rect x="230" y="146" width="396.0" height="28" fill="#fde68a"/><rect x="230" y="152" width="220.39999999999998" height="16" fill="#2563eb"/><text x="632.0" y="164" class="val">low 5.51 / high 9.90 USD</text><rect x="230" y="214" width="12" height="10" fill="#2563eb"/><text x="246" y="223" class="ax">low estimate</text><rect x="350" y="214" width="12" height="10" fill="#fde68a"/><text x="366" y="223" class="ax">high estimate</text><text x="990" y="223" class="ax" text-anchor="end">USD, 30 runs per model</text></svg></div>
+  <table><tr><th>Model</th><th>Low USD</th><th>Low INR</th><th>High USD</th><th>High INR</th><th>fx can start</th></tr><tr><td>Gemini 3.1 Pro Preview</td><td class=num>8.45</td><td class=num>817</td><td class=num>15.39</td><td class=num>1,487</td><td>untested</td></tr><tr><td>Claude Sonnet 5.5</td><td class=num>8.42</td><td class=num>813</td><td class=num>15.26</td><td class=num>1,474</td><td>untested</td></tr><tr><td>GPT-6.1 Sol</td><td class=num>8.42</td><td class=num>813</td><td class=num>15.26</td><td class=num>1,474</td><td>untested</td></tr><tr><td>DeepSeek V4 Pro (peak)</td><td class=num>5.51</td><td class=num>532</td><td class=num>9.90</td><td class=num>957</td><td>untested</td></tr><tr><td><b>All 4 models</b></td><td class=num>30.80</td><td class=num>2,975</td><td class=num>55.81</td><td class=num>5,392</td><td>—</td></tr></table>
+  <div class="warn"><b>fx start check.</b> fx has only been run on Gemini Flash-Lite through our proxy and on Cerebras. Gemini 3.1 Pro uses the same Gemini API, so it is the most likely to work, but nobody has run it. A one-request start check per model is needed before any paid row. That check needs the key for that provider. Do not mark any model 'fx confirmed' without a run file.</div>
+  <ul class="tight">
+    <li>T9 rests on n = 1 per agent. T9 is the largest share of the cost.</li>
+    <li>Gemini 3.1 Pro costs more above 200k tokens in one prompt (4.00 / 18.00 USD per 1M). One T9 request can go above 200k.</li>
+    <li>Token counts use the Gemini tokenizer. Other models count tokens differently (Anthropic says about 30% more for its newer tokenizer).</li>
+    <li>Retries after 429s or timeouts are not included. No cache discount is modelled. Harness T7 tokens are capped by the 24-step limit.</li>
+  </ul>
+  <p class="src"><b>Source:</b> <code>docs/benchmarks/phase4-strong-model-cost.md</code>.</p>
+
+  <h3>Startup and memory <span class="kind measured">Measured</span></h3>
+  <table><tr><th>Measure</th><th>Harness</th><th>fx</th><th>Note</th></tr>
+  <tr><td>Startup, no model, median of 10</td><td class=num>3.1 ms</td><td class=num>2.4 ms</td><td>Includes wrapper fork/exec, same for both</td></tr>
+  <tr><td>Max RSS, same commands</td><td class=num>about 4 MB</td><td class=num>1.5 MB</td><td></td></tr>
+  <tr><td>Peak RSS under scripted load</td><td class=num>about 168 MB</td><td>pending</td><td>Harness number includes the <code>cargo test</code> child. fx needs live runs.</td></tr></table>
+  <p class="src"><b>Source:</b> <code>first-head-to-head.md</code> "Startup and peak memory" (<code>d1ef97f</code>).</p>
+
+  <h3>T7 and T9 status</h3>
+  <p>All T7 and T9 runs are finished. No run is still in progress.</p>
+  <div class="warn"><b>T7 limitation: step limits were not equal.</b> Harness ran with a limit of 24 steps. fx had no limit set (<code>agent_step_limit=0</code>, read as no limit; this reading is inferred). fx used 15, 15 and 19 steps. All 3 Harness T7 runs stopped at 24 steps; 1 of 3 was green. Labeler: Harness median 3 unnecessary calls, fx median 1. T7 is not a fair test of success or unnecessary calls.</div>
+  <div class="warn"><b>T9: only 1 usable run per agent.</b> Unusable runs: <code>T9-trackB-fx-paced-F2</code> (exit 124, timeout) and <code>T9-trackB-fx-paced15-F1</code> (incomplete). In the Harness run, 8 of 22 calls were test-tool timeouts (one at 120 s, the other 7 at 30 s). The run also got 10 HTTP 429s. The scripted test below confirms the timeouts as a test-tool bug. Do not compare T9 tool efficiency until T9 is run again after a fix.</div>
+  <div class="warn"><b>H2 status bug.</b> <code>metrics.json</code> for T7 H2 says <code>success</code>, but H2 stopped at the step limit. Cause: <code>harness-cli/src/metrics.rs</code> lines 272–274 (any passing test call overwrites the stop reason). Not fixed. Bench doc <code>fff2514</code> now gives oracle success and stop reason separately. <b>Rule:</b> success = oracle <code>cargo test</code> passes; a step-limit stop is recorded separately. T7: Harness 1 of 3, fx 3 of 3.</div>
+  <div class="grid2">
+    <div class="card pending"><h4>T7 equal-limit rerun: pending</h4><p>No data yet. fx with <code>FX_MAX_AGENT_STEPS=24</code>, Harness with <code>--max-steps 24</code>. Same model, proxy and pacing.</p></div>
+    <div class="card"><h4>T9 scripted timeout test: result <span class="b r">confirmed bug</span></h4>
+      <p><b>Test:</b> model-free scripted runs on 2 tasks (<code>noisy_tests_v1</code>, and a <code>broken_calc_v2</code> copy with one test that prints 400 KB). 3 cold-build and 3 warm-build runs each. <b>All 12 runs timed out.</b> The same commands finish in 50–100 ms when output goes to a file. Build: 0.5–4.5 s cold, 18–84 ms warm, far below the limits.</p>
+      <p>The model got only <code>ERROR: tool failed: cargo test: timeout 120s</code>, with no test names. Same as live H1.</p>
+      <p><b>Cause (in <code>harness-tools</code>, not core):</b> the tool sends output to a pipe and only checks for exit. It does not read the pipe. The pipe buffer is 64 KiB. Larger output stops the child until the time limit stops the call. Code: <code>tests_tool.rs</code> L43–65, <code>shell.rs</code> L54–77; <code>git.rs</code> L17–35 has the same pattern. <code>kill()</code> stops only the direct child; test processes can continue to run.</p>
+      <p><b>Proposed fix (not built):</b> read output while the process runs, keep a bounded amount, keep the time limit. <code>harness-tools</code> only.</p>
+      <p>Confirmed on 2 tasks with no rate limit, so it meets Harsha's rule for the fix list. Repro: local branch <code>bench/t9-timeout-repro</code> (<code>e300dfe</code>). Source: Mike (team input).</p></div>
+  </div>
+  <p class="src"><b>Source:</b> <code>first-head-to-head.md</code> T7, T9, step-limit note; raw runs <code>native/benchmarks/head_to_head/runs/T7-*</code>, <code>T9-*</code>.</p>
 </section>
 
 <section id="native">
   <h2>5. Native runtime numbers vs fx published numbers</h2>
-  <div class="warn">Different products and different axes. Our numbers are a local smoke on our box. fx numbers are mostly cited from fx's own pages, for fx v0.0.10. We ran fx v0.0.13 in Phase 4. This is <b>not</b> a comparison and <b>not</b> a win claim. No Track B row records startup or memory for either agent.</div>
+  <div class="warn">Different products and different axes. Our numbers are a local smoke on our box. fx numbers are mostly cited from fx's own pages, for fx v0.0.10. We ran fx v0.0.13 in Phase 4. This is <b>not</b> a comparison and <b>not</b> a win claim. Section 4b has our own startup and memory numbers for both agents (measured, no model).</div>
   <table>
     <tr><th>Metric</th><th>Harness native (Rust)</th><th>Kind</th><th>fx</th><th>Kind</th></tr>
     <tr><td>Release binary size</td><td>1.924 MiB (scaffold + min tool pack, 2026-09-20)<br>3.335 MiB (Phase 3 slice, with ureq + rustls, 2026-09-21)</td><td><span class="kind measured">Measured</span></td><td>6.17 MiB (homepage)<br>7.800 MiB (production ceiling, AGENTS.md)<br>11.27 MiB (linux-x86_64 v0.0.10, unpacked by our team)</td><td><span class="kind cited">Cited</span><br><span class="kind cited">Cited</span><br><span class="kind measured">Measured by us</span></td></tr>
     <tr><td>Startup</td><td>median 1.029 ms, p95 1.190 ms (<code>harness version</code>, n = 30, scaffold build, 2026-09-20)</td><td><span class="kind measured">Measured</span></td><td>2 ms mean budget per command (Linux CI)</td><td><span class="kind cited">Cited (budget, not a measurement)</span></td></tr>
     <tr><td>Startup after Phase 3 build</td><td>not measured</td><td>—</td><td>—</td><td>—</td></tr>
-    <tr><td>Peak memory (RSS) of an agent run</td><td><b>unknown — not measured</b></td><td>—</td><td><b>unknown</b> (no first-party memory number found)</td><td>—</td></tr>
+    <tr><td>Startup, no model, median of 10 (2026-10-11)</td><td>3.1 ms, about 4 MB max RSS</td><td><span class="kind measured">Measured</span></td><td>2.4 ms, 1.5 MB max RSS (v0.0.13)</td><td><span class="kind measured">Measured by us</span></td></tr>
+    <tr><td>Peak memory (RSS) under load</td><td>about 168 MB, scripted run, includes <code>cargo test</code> child</td><td><span class="kind measured">Measured</span></td><td><b>pending</b> (needs live runs)</td><td>—</td></tr>
   </table>
   <p class="src"><b>Source:</b> <code>docs/benchmarks/native-scaffold.md</code>; <code>docs/benchmarks/native-phase3-slice.md</code>; <code>docs/research/10-fx-beat-goals.md</code> §1; <code>docs/research/12-native-language.md</code> §3; <code>phase4-report.md</code> §7 item 11. We show these values in a table, not a chart, because the fx values are mostly not recorded by us.</p>
 </section>
@@ -254,14 +304,14 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
     <tr><td>Context efficiency (tokens)</td><td class="st s">strength signal (1 task)</td><td class="s">T1 v2 paced median 28,833 vs 75,499. Counts as a strength only if it holds on T7 (Thomas). Cause unknown.</td></tr>
     <tr><td>Startup</td><td class="st u">unknown</td><td class="u">Not measured in Track B. Only a scaffold smoke (1.029 ms median) and an fx budget (2 ms, cited). Not comparable.</td></tr>
     <tr><td>Binary size</td><td class="st ne">neutral</td><td class="ne">3.335 MiB measured (Phase 3 build). fx: 6.17 MiB cited, 11.27 MiB measured for v0.0.10. Different products. Not a work item (Alice).</td></tr>
-    <tr><td>Memory (RSS)</td><td class="st u">unknown — not measured</td><td class="u">No run records peak RSS for either agent.</td></tr>
+    <tr><td>Memory (RSS)</td><td class="st u">partly measured</td><td class="u">No model: Harness about 4 MB, fx 1.5 MB. Harness about 168 MB under scripted load (includes <code>cargo test</code>). fx load peak pending.</td></tr>
     <tr><td>Provider compatibility</td><td class="st s">strength signal</td><td class="s">Harness ran on Gemini direct and Cerebras. fx failed to start on both (InvalidChunk; HTTP 400). Compatibility only, not coding quality.</td></tr>
     <tr><td>Rate-limit handling</td><td class="st w">weak (watch)</td><td class="w">r3–r5 failed on 429; retry budget (3 retries, 30 s cap) does not outlast the quota window. V-H1 stopped on 429; fx finished under 7–13 429s.</td></tr>
     <tr><td>Feature depth</td><td class="st w">weak</td><td class="w">fx docs list 17 tool kinds incl. MCP, subagent, web. Harness has none of MCP, subagents or web tools.</td></tr>
     <tr><td>Sandbox</td><td class="st w">weak</td><td class="w">No OS sandbox. No live run used one. We make no sandbox claim.</td></tr>
     <tr><td>Deny-all tested live</td><td class="st w">no</td><td class="w">Every live Harness row used <code>--allow coding,shell</code>. fx used <code>--full-access</code> or <code>--auto</code>.</td></tr>
-    <tr><td>Task coverage</td><td class="st w">weak</td><td class="w">Only 1 task (T1 v2) has fair pairs. T7 and T9 pending.</td></tr>
-    <tr><td>Large tool output (T9)</td><td class="st u">unknown (risk)</td><td class="u">32 KiB cap keeps the head. T9 baseline output is 431,640 bytes. No data yet.</td></tr>
+    <tr><td>Task coverage</td><td class="st w">weak</td><td class="w">Only 1 task (T1 v2) has fair pairs. T7 has unequal step limits. T9 has n = 1 and a test-tool bug.</td></tr>
+    <tr><td>Large tool output (T9)</td><td class="st u">unknown (risk)</td><td class="u">32 KiB cap keeps the head. Not measured yet: a test-tool bug (pipe not read, 64 KiB buffer) stopped large output first. See section 4b.</td></tr>
   </table>
   <p class="src"><b>Source:</b> <code>phase4-report.md</code> §3 (G1–G3), §4 (W1–W6), §7, §8; <code>10-fx-beat-goals.md</code> §1; <code>native-phase3-slice.md</code>; <code>native-scaffold.md</code>.</p>
 </section>
@@ -271,9 +321,9 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
   <p>A buyer who compares coding agents looks for results on a multi-task suite. Well-known public suites include SWE-bench and Terminal-Bench. We have no result on any public suite. We cite no numbers from them.</p>
   <table>
     <tr><th>A buyer would ask for</th><th>What we have today</th><th>Gap</th></tr>
-    <tr><td>More than one task, ideally 10+</td><td>1 task with fair pairs (T1 v2). T7, T9 pending.</td><td><span class="b r">large</span></td></tr>
+    <tr><td>More than one task, ideally 10+</td><td>1 task with fair pairs (T1 v2). T7 rerun pending. T9 rerun after fix.</td><td><span class="b r">large</span></td></tr>
     <tr><td>A strong model, and at least 2 models</td><td>Paired rows on one weak model (flash-lite) only. fx could not start on Cerebras.</td><td><span class="b r">large</span></td></tr>
-    <tr><td>The token gap holding on a second task</td><td>Shown on T1 v2 only. T7 decides.</td><td><span class="b y">pending</span></td></tr>
+    <tr><td>The token gap holding on a second task</td><td>T7: Harness median 80,016, fx 159,406 input tokens, but Harness was capped at 24 steps. T7 equal-limit rerun decides.</td><td><span class="b y">pending</span></td></tr>
     <tr><td>A live deny-all row</td><td>None. All rows had shell on.</td><td><span class="b r">open</span></td></tr>
     <tr><td>n ≥ 5 per cell, p95 that is not the max</td><td>n = 3. p95 = max.</td><td><span class="b y">open</span></td></tr>
     <tr><td>Results on a public suite (SWE-bench-style or Terminal-Bench-style)</td><td>None.</td><td><span class="b r">open</span></td></tr>
@@ -296,7 +346,7 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
     <tr><td>M6</td><td>Two key-leak bugs in scrub code (adapter and core).</td><td>No key appeared in any run folder, doc or commit.</td><td>Fixed: <code>cfbb242</code>, <code>1b7c38c</code> (adapter); <code>be14c4c</code> PR #10 (core).</td></tr>
     <tr><td>M7</td><td>Harness tokens not recorded in early paired sets.</td><td>T1 v1 proxy set has fx tokens only.</td><td>Token capture in adapter (<code>7080c56</code>).</td></tr>
     <tr><td>M8</td><td>Approvals stuck in 1:1 chats.</td><td>Biggest single delay (The Chief).</td><td>Batch approvals into one ask.</td></tr>
-    <tr><td>M9</td><td>Time went to providers, not tasks.</td><td>One task family in 8 live sets.</td><td>T7 and T9 now frozen.</td></tr>
+    <tr><td>M9</td><td>Time went to providers, not tasks.</td><td>One task family in 8 live sets.</td><td>T7 and T9 run.</td></tr>
   </table>
   <p class="src"><b>Source:</b> <code>phase4-report.md</code> §6 M1–M9, §9.5.</p>
 </section>
@@ -306,16 +356,16 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
   <table>
     <tr><th>#</th><th>Gap</th><th>Effect on this report</th></tr>
     <tr><td>1</td><td>No fx per-call token breakdown</td><td>We cannot explain the token gap.</td></tr>
-    <tr><td>2</td><td>fx read paths not in its JSON</td><td>No decoy-read comparison.</td></tr>
+    <tr><td>2</td><td>fx read paths not in its JSON (corrected in v2)</td><td>fx stderr has activity lines with paths. The labeler uses them. Decoy reads are comparable.</td></tr>
     <tr><td>3</td><td>Turns vs steps not like-for-like</td><td>Proxy request counts exist for the paced set only.</td></tr>
-    <tr><td>4</td><td><code>unnecessary_tool_calls</code> = repeat reads + searches only</td><td>A floor, not the full oracle count.</td></tr>
+    <tr><td>4</td><td><code>unnecessary_tool_calls</code> = repeat reads + searches only</td><td>A floor. The labeler (section 4b) gives a fuller count. <code>metrics.json</code> counts a failing <code>run_tests</code> as a failed call; the labeler scores test runs by result.</td></tr>
     <tr><td>5</td><td>n = 3 per cell</td><td>p95 = max. We show min / median / max.</td></tr>
     <tr><td>6</td><td>One weak model, one provider, our proxy</td><td>No paired row on a strong model.</td></tr>
     <tr><td>7</td><td>Track A is Harness only</td><td>fx has no scripted mode.</td></tr>
     <tr><td>8</td><td>Deny-all not tested live</td><td>Security default untested in rows.</td></tr>
     <tr><td>9</td><td>No OS sandbox</td><td>No sandbox claim.</td></tr>
     <tr><td>10</td><td>fx retry waits not reported</td><td>Unpaced fx wall time includes unknown back-off.</td></tr>
-    <tr><td>11</td><td>No startup or peak RSS in Track B</td><td>Memory = unknown.</td></tr>
+    <tr><td>11</td><td>fx peak RSS under load not measured</td><td>Startup measured for both. Harness load peak measured. fx load peak pending.</td></tr>
     <tr><td>12</td><td>Proxy rewrites the stream for both agents</td><td>Not how either agent talks to Gemini directly.</td></tr>
     <tr><td>13</td><td>Harness tool output capped at 32 KiB (design difference)</td><td>Matters on T9; token numbers there are partly a design choice.</td></tr>
   </table>
@@ -324,18 +374,19 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
 
 <section id="next">
   <h2>11. Next steps (ranked by the decision rule)</h2>
-  <div class="info"><b>Decision rule (Alice):</b> a fix item needs a Harness miss on 2 or more tasks with no rate limit in play. Today no fix item qualifies. <b>Answer to "what should we build next?": nothing yet, add tasks.</b></div>
+  <div class="info"><b>Decision rule (Alice):</b> a fix item needs a Harness miss on 2 or more tasks with no rate limit in play. One fix item now qualifies: test and shell tools block on output above 64 KiB (<code>harness-tools</code>). Not built. No work before Harsha's review. <b>Answer to "what should we build next?": the test-tool output fix, after Harsha's review.</b></div>
   <table>
     <tr><th>Rank</th><th>Item</th><th>Type</th><th>Status</th></tr>
-    <tr><td>1</td><td>Finish and review T7 and T9 paced runs</td><td>Data</td><td><span class="b y">in progress</span></td></tr>
+    <tr><td>1</td><td>T7 equal-limit rerun (<code>FX_MAX_AGENT_STEPS=24</code>) ; T9 rerun after the test-tool fix</td><td>Data</td><td><span class="b y">pending</span></td></tr>
     <tr><td>2</td><td>Log per-request token counts at the proxy (counts only)</td><td>Measurement</td><td><span class="b n">proposed</span></td></tr>
     <tr><td>3</td><td>Record upstream requests at the proxy for every paired set</td><td>Measurement</td><td><span class="b n">proposed</span></td></tr>
-    <tr><td>4</td><td>Full oracle labels for unnecessary calls (replay, outside core)</td><td>Measurement</td><td><span class="b n">proposed</span></td></tr>
+    <tr><td>4</td><td>Full oracle labels for unnecessary calls (outside core)</td><td>Measurement</td><td><span class="b g">labeler added (<code>92ceba8</code>)</span></td></tr>
     <tr><td>5</td><td>n ≥ 5 per cell; more tasks after T7/T9</td><td>Measurement</td><td><span class="b n">proposed</span></td></tr>
     <tr><td>6</td><td>Stronger model and a second provider</td><td>Measurement</td><td><span class="b n">proposed</span></td></tr>
     <tr><td>7</td><td>One live deny-all row</td><td>Measurement</td><td><span class="b n">proposed</span></td></tr>
-    <tr><td>8</td><td>Startup and peak RSS in Track B</td><td>Measurement</td><td><span class="b n">proposed</span></td></tr>
-    <tr><td>W</td><td>Watch: 32 KiB cut on T9 → test-tool filter outside core; rate-limit budget in adapter; decoy reads; turn count</td><td>Watch</td><td><span class="b n">needs 2-task evidence</span></td></tr>
+    <tr><td>8</td><td>fx peak RSS in live runs</td><td>Measurement</td><td><span class="b n">pending</span></td></tr>
+    <tr><td>F</td><td>Fix (proposed, not built): read test/shell output while running, bounded, keep time limit (<code>harness-tools</code>)</td><td>Fix</td><td><span class="b y">awaits Harsha's review</span></td></tr>
+    <tr><td>W</td><td>Watch: 32 KiB cut on T9 (after fix); rate-limit budget in adapter; decoy reads; turn count</td><td>Watch</td><td><span class="b n">needs 2-task evidence</span></td></tr>
   </table>
   <p class="src"><b>Source:</b> <code>phase4-report.md</code> §9.1–§9.4.</p>
 </section>
@@ -343,8 +394,8 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
 <section id="decisions">
   <h2>12. Decisions for Harsha</h2>
   <ol class="dec">
-    <li><b>Approve review of T7 and T9 results</b> when the paced runs finish. The bench doc and this report then need an update.</li>
-    <li><b>Approve one strong-model paired run.</b> First find a provider path where both agents start. Cost: <b>unknown</b>. No cost estimate is in the repo. Ask for an estimate before approval.</li>
+    <li><b>Review the T7 and T9 results</b> in section 4b. Approve the T7 equal-limit rerun.</li>
+    <li><b>Approve one strong-model paired run.</b> First find a provider path where both agents start. Estimate for 30 runs per model: 5.51 to 15.39 USD (532 to 1,487 INR). See section 4b.</li>
     <li><b>Approve one live deny-all row.</b> Harness at its default deny-all plus the minimum allow list, with the fx mode named.</li>
     <li><b>Approve batched approvals.</b> One ask per batch of pushes and run jobs, not one per 1:1 chat. This was the biggest delay.</li>
     <li><b>Confirm the rule "nothing yet, add tasks"</b> until a Harness miss shows on 2 or more tasks with no rate limit.</li>
@@ -356,7 +407,9 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
   <h2>13. Sources</h2>
   <table>
     <tr><th>File / ref</th><th>Used for</th></tr>
-    <tr><td><code>docs/benchmarks/phase4-report.md</code> @ <code>ecc89dc</code></td><td>Main fact source: gains, losses, mistakes, gaps, decision rule</td></tr>
+    <tr><td><code>docs/benchmarks/data/phase4_tool_labels.csv</code>, <code>phase4-strong-model-cost.md</code>, <code>native/benchmarks/tools/README-labels.md</code> (<code>92ceba8</code>, <code>b592ecf</code>)</td><td>v2: labels, cost estimate</td></tr>
+    <tr><td><code>docs/benchmarks/first-head-to-head.md</code> @ <code>d1ef97f</code></td><td>v2: T7, T9, startup, memory, fx step limit</td></tr>
+    <tr><td><code>docs/benchmarks/phase4-report.md</code> v2 (v1 @ <code>ecc89dc</code>)</td><td>Main fact source: gains, losses, mistakes, gaps, decision rule</td></tr>
     <tr><td><code>docs/benchmarks/first-head-to-head.md</code> @ <code>2d39e9c</code> (rows), <code>ecc89dc</code></td><td>All per-run tables</td></tr>
     <tr><td><code>native/benchmarks/head_to_head/runs/*</code> (gitignored, local)</td><td>Verification: <code>cargo_exit</code>, <code>wall_ms</code>, <code>proxy_hold.json</code>, <code>rec/metrics.json</code>, fx <code>stdout.txt</code> usage (summed values only)</td></tr>
     <tr><td><code>native/benchmarks/head_to_head/{T1_broken_calc,T1v2_broken_calc,T7_large_repo,T9_noisy_tests}</code></td><td>Task design facts, manifests</td></tr>
