@@ -269,9 +269,10 @@ pub fn aggregate(events: &[RunEvent], meta: &MetricsMeta) -> Value {
         ("fail", false, false)
     };
 
-    // Prefer oracle-independent heuristic: if run_tests succeeded, task_success true
+    // task_success: oracle-independent heuristic (Done=Succeeded or any passing run_tests).
+    // exit_status is the stop reason from `done` only; a passing run_tests must not
+    // overwrite it (T7 H2: tests passed but the run stopped at MaxSteps).
     let task_success = task_success || success_ts.is_some();
-    let exit_status = if task_success { "success" } else { exit_status };
 
     let time_to_first_useful: Value = match (t0, first_useful_ts) {
         (Some(a), Some(b)) if b >= a => json!(b - a),
@@ -389,5 +390,20 @@ mod tests {
         assert_eq!(m["task_success"], true);
         assert_eq!(m["tests_run"], 1);
         assert!(m.get("score").is_none());
+    }
+
+    #[test]
+    fn passing_tests_do_not_overwrite_max_steps_stop_reason() {
+        let events = vec![
+            RunEvent::model_request(1, 2),
+            RunEvent::model_response(None, vec![]),
+            RunEvent::tool_call("1".into(), "run_tests".into(), json!({})),
+            RunEvent::tool_result("1".into(), "run_tests".into(), "ok".into(), true),
+            RunEvent::done("MaxSteps", 24),
+        ];
+        let m = aggregate(&events, &MetricsMeta::default());
+        assert_eq!(m["exit_status"], "max_turns");
+        assert_eq!(m["task_success"], true);
+        assert_eq!(m["run_ok"], true);
     }
 }
