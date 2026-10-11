@@ -2,7 +2,7 @@
 //! Env: HARNESS_API_KEY | OPENAI_API_KEY, HARNESS_BASE_URL, HARNESS_MODEL.
 //! Streaming: TODO — wire SSE when non-stream path is solid.
 
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -82,6 +82,7 @@ pub struct OpenAiCompat {
     timeout: Duration,
     retry: RetryPolicy,
     retries: Arc<AtomicU32>,
+    retry_wait_ms: Arc<AtomicU64>,
 }
 
 impl std::fmt::Debug for OpenAiCompat {
@@ -93,6 +94,7 @@ impl std::fmt::Debug for OpenAiCompat {
             .field("model", &self.model)
             .field("timeout", &self.timeout)
             .field("retries", &self.retries.load(Ordering::Relaxed))
+            .field("retry_wait_ms", &self.retry_wait_ms.load(Ordering::Relaxed))
             .finish()
     }
 }
@@ -124,6 +126,7 @@ impl OpenAiCompat {
             timeout: Duration::from_secs(DEFAULT_TIMEOUT_SECS),
             retry: RetryPolicy::default(),
             retries: Arc::new(AtomicU32::new(0)),
+            retry_wait_ms: Arc::new(AtomicU64::new(0)),
         })
     }
 
@@ -135,6 +138,7 @@ impl OpenAiCompat {
             timeout: Duration::from_secs(DEFAULT_TIMEOUT_SECS),
             retry: RetryPolicy::default(),
             retries: Arc::new(AtomicU32::new(0)),
+            retry_wait_ms: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -151,6 +155,11 @@ impl OpenAiCompat {
     /// Shared counter handle (survives moves of the client).
     pub fn retry_counter(&self) -> Arc<AtomicU32> {
         self.retries.clone()
+    }
+
+    /// Total measured backoff sleep (ms) across all retries of this client.
+    pub fn retry_wait_ms(&self) -> u64 {
+        self.retry_wait_ms.load(Ordering::Relaxed)
     }
 
     pub fn with_timeout(mut self, timeout: Duration) -> Self {
@@ -206,7 +215,10 @@ impl OpenAiCompat {
                         wait.as_millis(),
                         err.to_string().lines().next().unwrap_or("")
                     );
+                    let t0 = std::time::Instant::now();
                     std::thread::sleep(wait);
+                    self.retry_wait_ms
+                        .fetch_add(t0.elapsed().as_millis() as u64, Ordering::Relaxed);
                     waited += wait;
                     attempt += 1;
                     self.retries.fetch_add(1, Ordering::Relaxed);
@@ -511,6 +523,87 @@ mod retry_tests {
         let c = client(&format!("http://{addr}"));
         assert!(c.complete_inner(&[], &[]).is_err());
         assert_eq!(c.retry_count(), 3);
+    }
+
+    /// Accepts each connection and reads the full request; for the first
+    /// `stalls` connections it then sleeps past the client read timeout
+    /// before closing without answering. Later connections get 200 OK.
+    fn serve_stalling(stalls: u32, total: u32, stall: Duration) -> (String, Arc<Mutex<u32>>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let hits = Arc::new(Mutex::new(0u32));
+        let h = hits.clone();
+        std::thread::spawn(move || {
+            for i in 0..total {
+                let Ok((mut s, _)) = listener.accept() else { return };
+                let mut r = BufReader::new(s.try_clone().unwrap());
+                let mut len = 0usize;
+                loop {
+                    let mut line = String::new();
+                    if r.read_line(&mut line).unwrap_or(0) == 0 || line == "\r\n" { break; }
+                    if let Some(v) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                        len = v.trim().parse().unwrap();
+                    }
+                }
+                let mut buf = vec![0u8; len];
+                let _ = r.read_exact(&mut buf);
+                *h.lock().unwrap() += 1;
+                if i < stalls {
+                    // Hold the socket open past the client read timeout, then drop.
+                    std::thread::spawn(move || {
+                        std::thread::sleep(stall);
+                        drop(s);
+                    });
+                    continue;
+                }
+                let resp = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{OK_BODY}",
+                    OK_BODY.len()
+                );
+                let _ = s.write_all(resp.as_bytes());
+            }
+        });
+        (format!("http://{addr}"), hits)
+    }
+
+    #[test]
+    fn read_timeout_retries_then_succeeds() {
+        let (base, hits) = serve_stalling(2, 3, Duration::from_secs(3));
+        let c = client(&base).with_timeout(Duration::from_millis(300));
+        let t = std::time::Instant::now();
+        let r = c.complete_inner(&[], &[]).expect("should succeed after read timeouts");
+        assert_eq!(r.message.content.as_deref(), Some("hi"));
+        assert_eq!(*hits.lock().unwrap(), 3);
+        assert_eq!(c.retry_count(), 2);
+        assert!(t.elapsed() < Duration::from_secs(10));
+    }
+
+    #[test]
+    fn read_timeout_gives_up_after_max() {
+        let (base, hits) = serve_stalling(10, 10, Duration::from_secs(3));
+        let c = client(&base).with_timeout(Duration::from_millis(300));
+        let t = std::time::Instant::now();
+        let e = c.complete_inner(&[], &[]).unwrap_err().to_string();
+        assert!(e.contains("http"), "{e}");
+        assert_eq!(*hits.lock().unwrap(), 4);
+        assert_eq!(c.retry_count(), 3);
+        assert!(t.elapsed() < Duration::from_secs(10));
+    }
+
+    #[test]
+    fn retry_wait_is_recorded() {
+        let (base, _hits) = serve(vec![(503, "{}"), (503, "{}"), (200, OK_BODY)]);
+        let c = OpenAiCompat::new("test-key", &base, "m").with_retry_policy(RetryPolicy {
+            max_retries: 3,
+            backoff_base: Duration::from_millis(50),
+            max_total_wait: Duration::from_secs(5),
+        });
+        assert_eq!(c.retry_wait_ms(), 0);
+        c.complete_inner(&[], &[]).unwrap();
+        assert_eq!(c.retry_count(), 2);
+        // Backoff 50ms + 100ms (plus <=25% jitter each).
+        let w = c.retry_wait_ms();
+        assert!((150..1000).contains(&w), "retry_wait_ms={w}");
     }
 
     #[test]

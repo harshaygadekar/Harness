@@ -336,7 +336,7 @@ fn ask_cmd(
     let allow_names = expand_allow(allow, false);
     let runner = build_runner(&allow_names, workspace)?;
 
-    let mut model_retries: Option<u32> = None;
+    let mut model_retries: Option<(u32, u64)> = None;
     let result = match model_name {
         "fake" => {
             let mut model = FakeModel::new();
@@ -355,7 +355,7 @@ fn ask_cmd(
             let mut model =
                 OpenAiCompat::from_env().map_err(|e| format!("openai model: {e}"))?;
             let r = runner.run(&mut model, prompt, RunConfig { max_steps });
-            model_retries = Some(model.retry_count());
+            model_retries = Some((model.retry_count(), model.retry_wait_ms()));
             r
         }
         other => return Err(format!("unknown model '{other}' (use fake|scripted|openai)")),
@@ -377,10 +377,8 @@ fn ask_cmd(
         source_run_jsonl: path.display().to_string(),
     };
     let mut metrics = aggregate(&result.events, &meta);
-    if let Some(n) = model_retries {
-        if let Some(obj) = metrics.as_object_mut() {
-            obj.insert("model_retries".into(), json!(n));
-        }
+    if let Some((n, wait_ms)) = model_retries {
+        add_retry_metrics(&mut metrics, n, wait_ms);
         let _ = fs::write(record_dir.join("model_retries.txt"), format!("{n}\n"));
     }
     write_metrics(&metrics_path, &metrics)?;
@@ -497,4 +495,32 @@ fn replay_cmd(
         println!("metrics={}", out.display());
     }
     Ok(())
+}
+
+/// Bench rule: retry backoff wait is reported separately from agent wall time.
+fn add_retry_metrics(metrics: &mut serde_json::Value, retries: u32, wait_ms: u64) {
+    if let Some(obj) = metrics.as_object_mut() {
+        obj.insert("model_retries".into(), json!(retries));
+        obj.insert("model_retry_wait_ms".into(), json!(wait_ms));
+        if let Some(wall) = obj.get("wall_time_ms").and_then(|v| v.as_u64()) {
+            obj.insert(
+                "agent_wall_ms_excl_retry_wait".into(),
+                json!(wall.saturating_sub(wait_ms)),
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod retry_metrics_tests {
+    use super::*;
+
+    #[test]
+    fn retry_wait_fields_written() {
+        let mut m = json!({"wall_time_ms": 25094});
+        add_retry_metrics(&mut m, 3, 16115);
+        assert_eq!(m["model_retries"], 3);
+        assert_eq!(m["model_retry_wait_ms"], 16115);
+        assert_eq!(m["agent_wall_ms_excl_retry_wait"], 8979);
+    }
 }

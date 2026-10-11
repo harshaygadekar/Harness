@@ -311,6 +311,16 @@ See [`../research/15-phase4-first-bench.md`](../research/15-phase4-first-bench.m
 
 **Build change:** harness SHA `29d1f583c42cca84e3bf68a4b97028e3a3656157` adds bounded provider retry in `harness-model` OpenAiCompat (outside core): retry on transport error/timeout and HTTP 429/500/502/503/504, max 3 retries, backoff ~2s/4s/8s + jitter, total added wait capped at 30s, Retry-After honored. r3–r5 are **not** the same build as r1/r2 (`e435905` era). `model_retries` is now written to metrics.json and `model_retries.txt`.
 
+**Duplicate-request caveat:** a retry after a read timeout can send the same request to the provider twice, because the first request may already have been received and processed when the client gave up waiting. That uses provider quota and can be billed twice. Every retry is counted in `model_retries`.
+
+**Retry wait reported separately (bench rule):** from the build after `29d1f58`, metrics.json also has `model_retry_wait_ms` (measured total backoff sleep in the adapter) and `agent_wall_ms_excl_retry_wait = wall_time_ms - model_retry_wait_ms`. r3–r5 ran before these fields existed; the values below are recovered from the `model retry N/3 after X ms` lines in each run's `harness.stderr` (the requested sleep per retry, summed), not from a measured counter.
+
+| Run | wall_time_ms | Retry wait (ms, from stderr) | agent_wall_ms_excl_retry_wait |
+|-----|--------------|------------------------------|-------------------------------|
+| r3 | 25094 | 16115 (2222 + 4802 + 9091) | 8979 |
+| r4 | 15804 | 15333 (2139 + 4691 + 8503) | 471 |
+| r5 | 17957 | 16005 (2264 + 4053 + 9688) | 1952 |
+
 Same machine (linux-x86_64, 8 vCPU Xeon, 16 GB), model `gemini-3.5-flash` via Gemini OpenAI-compatible endpoint, flags `ask --model openai --allow coding,shell --max-steps 24`, exact TASK.md prompt, fresh fixture copy, 8-min timeout.
 
 | Run | Agent | Success (`cargo test`) | wall_time_ms | Tool calls | Fails | Model turns | Files modified | Retries | Stop reason |
