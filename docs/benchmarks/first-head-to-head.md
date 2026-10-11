@@ -524,7 +524,51 @@ wall_ms is operator-measured around the agent process and includes proxy hold ti
 
 Medians of ok/fail/dup are taken per column. fx steps and Harness model turns measure different things and are not directly comparable. Three runs per agent; spread is wide relative to the sample. Run folders: `native/benchmarks/head_to_head/runs/T1v2-broken_calc-trackB-{fx,harness}-paced-P-*` (gitignored; usage numbers only).
 
-## Task packs frozen, not yet run (Phase 4)
+## Task packs frozen (Phase 4; T7 and T9 runs above)
 
 - **T7 large_repo** — `native/benchmarks/head_to_head/T7_large_repo/`, fixture `native/fixtures/large_repo_v1/` (sha256 `fa3fa9fc45dbf75e648033d2c4b006935c3b3a0c3c538e6bff0373e0d03b0d6b`). Measures context read to locate a bug in a big irrelevant repo.
 - **T9 noisy_tests** — `native/benchmarks/head_to_head/T9_noisy_tests/`, fixture `native/fixtures/noisy_tests_v1/` (sha256 `1af0af8a77913f599095320f0bd87766c77de53d91c4043a4dbb88a6a082a078`). Measures handling of very large `cargo test` output.
+
+## T7 large repo: Flash-Lite via proxy, paced
+
+**Label: same weak model, free tier.** Fixture `native/fixtures/large_repo_v1/` (sha256 `fa3fa9fc…0d6b`, verified before the runs; fresh copy failed `tests/invoicing.rs` 0/4 at baseline). Commit under test `2a99d06`. Order F1, H1, F2, H2, F3, H3; 90 s between runs.
+
+**Controlled:** model `gemini-3.5-flash-lite` for both, both through `oai_stream_proxy` (127.0.0.1 only, fresh proxy per run, `--min-interval-ms 5000`, signature add-back, `finish_reason` rewrite, hold file); prompt = only the fenced block of `TASK.md`; fresh fixture copy per run with `target/` deleted; **warm `cargo build --tests` in each copy before the agent started** (exit 0 in all six); 8-minute timeout; same machine.
+**Uncontrolled:** system prompt; tool surface; step cap (Harness `--max-steps 24`, fx default); permission modes (fx `--auto`; Harness `--allow coding,shell`, so shell was on); retry behaviour.
+
+| Run | Agent | cargo test | wall_ms | hold ms | wall − hold | 429s | retries / wait ms | turns/steps | tool calls ok/fail/dup | files read / modified | tokens in / out | largest tool result B | stop |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| F1 | fx | pass (87) | 113043 | 38777 | 74266 | 0 | n/a | 15 | 14/1/0 | 7 / ratio.rs, month_len.rs | 159406 / 600 | 5308 | exit 0 |
+| H1 | Harness | fail (83) | 120250 | 51568 | 68682 | 0 | 0 / 0 | 24 | 23/1/4 | 6 / month_len.rs | 91514 / 536 | 2332 | MaxSteps |
+| F2 | fx | pass (87) | 86540 | 68271 | 18269 | 0 | n/a | 15 | 14/1/0 | 10 / ratio.rs, month_len.rs | 142766 / 740 | 5308 | exit 0 |
+| H2 | Harness | pass (87) | 115678 | 97516 | 18162 | 0 | 0 / 0 | 24 | 23/1/4 | 6 / ratio.rs, month_len.rs | 80016 / 723 | 2332 | metrics `success` (agent exit 1) |
+| F3 | fx | pass (87) | 110848 | 92254 | 18594 | 0 | n/a | 19 | 17/2/0 | 8 / ratio.rs, month_len.rs | 202485 / 658 | 5308 | exit 0 |
+| H3 | Harness | fail (83) | 118547 | 95373 | 23174 | 0 | 0 / 0 | 24 | 23/1/2 | 9 / month_len.rs | 72329 / 554 | 1540 | MaxSteps |
+
+fx files read are from its stderr progress lines ("Reading …"); fx dup is not measurable from its JSON. fx largest tool result is the `cargo test` stdout+stderr byte count it reports.
+
+**Oracle check:** fx 3/3 fixed both bugs (`util/ratio.rs`, `calendar/month_len.rs`). Harness H2 fixed both; H1 and H3 fixed only `is_leap` and missed the `scale` bug, stopping at the 24-step cap right after the patch. No run edited a decoy, a test, or any other file.
+
+| Agent | finished of runs | wall ms min / median / max | wall − hold min / median / max | median turns/steps | median tool calls | median input tokens | median largest tool result B |
+|---|---|---|---|---|---|---|---|
+| fx | 3 of 3 | 86540 / 110848 / 113043 | 18269 / 18594 / 74266 | 15 | 15 | 159406 | 5308 |
+| Harness | 1 of 3 | 115678 (single finished run) | 18162 (single finished run) | 24 | 24 | 80016 | 2332 |
+
+Zero 429s in all six runs. Run folders: `native/benchmarks/head_to_head/runs/T7-trackB-{fx,harness}-paced-*` (gitignored; usage numbers only).
+
+## T9 noisy tests: Flash-Lite via proxy, paced
+
+**Label: same weak model, free tier. Result: inconclusive (set incomplete — daily quota).** Fixture `native/fixtures/noisy_tests_v1/` (sha256 `1af0af8a…a078`, verified; fresh copy at baseline: 540 generated pass, `tests/orders.rs` 1 pass / 2 fail, ~432 KB output). Same controlled/uncontrolled variables as T7, including the warm build before each run.
+
+| Run | Agent | interval | cargo test | wall_ms | hold ms | 429s | retries / wait ms | turns/steps | tool calls ok/fail/dup | files modified | tokens in / out | largest tool result B | stop |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| F1 | fx | 5 s | pass (543) | 79645 | 57979 | 0 | n/a | 12 | 10/2/0 | reader.rs | 238307 / 452 | 431640 raw output (fx marked it truncated); largest file read 81944 | exit 0 |
+| H1 | Harness | 5 s | fail (541) | 466735 | 67779 | 10 | 9 / 40706 | 23 | 14/8/1 | none | 241118 / 450 | 32809 | Failed (429 after tool timeouts) |
+| F2 | fx | 5 s | fail (541) | 818030 | 32765 | 26 | n/a | — | — | none | — | — | timeout (exit 124), 429 loop |
+| F1 | fx | 15 s | not run to end | — | — | 15 of 15 | — | — | — | — | — | — | aborted: daily quota |
+
+Per Thomas's rule the 5 s set was abandoned after 429s and a 15 s set started; its first request already returned `GenerateRequestsPerDayPerProjectPerModel-FreeTier`, so the set was stopped. T9 H2, F3, H3 (5 s) and the whole 15 s set were not run.
+
+**32 KiB cut (design difference):** Harness cuts each tool result at 32 KiB (`MAX_OBS_BYTES`, keeps the start); fx reports a `truncated` flag on its own command output. In Harness H1 the failing test names and failure messages did **not** reach the model (no). This was not caused by the cut: every `run_tests` / `run_shell` call that ran the failing `orders` tests ended in a tool timeout (`cargo test: timeout 120s`, `timeout 30s`, 8 times); only filtered runs of passing tests returned. Its largest results (32809 B) were the 32 KiB-capped reads of `tests/generated.rs` and `data/orders.csv`. Whether the cut hides the failure is not measured by this set.
+
+Finished: fx 1 of 2 (5 s), Harness 0 of 1. With n this small no medians are reported. Run folders: `native/benchmarks/head_to_head/runs/T9-trackB-*-paced{,15}-*` (gitignored).
