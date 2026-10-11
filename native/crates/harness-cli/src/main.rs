@@ -337,6 +337,7 @@ fn ask_cmd(
     let runner = build_runner(&allow_names, workspace)?;
 
     let mut model_retries: Option<(u32, u64)> = None;
+    let mut model_usage: Option<harness_model::UsageTotals> = None;
     let result = match model_name {
         "fake" => {
             let mut model = FakeModel::new();
@@ -356,6 +357,7 @@ fn ask_cmd(
                 OpenAiCompat::from_env().map_err(|e| format!("openai model: {e}"))?;
             let r = runner.run(&mut model, prompt, RunConfig { max_steps });
             model_retries = Some((model.retry_count(), model.retry_wait_ms()));
+            model_usage = Some(model.usage_totals());
             r
         }
         other => return Err(format!("unknown model '{other}' (use fake|scripted|openai)")),
@@ -380,6 +382,9 @@ fn ask_cmd(
     if let Some((n, wait_ms)) = model_retries {
         add_retry_metrics(&mut metrics, n, wait_ms);
         let _ = fs::write(record_dir.join("model_retries.txt"), format!("{n}\n"));
+    }
+    if let Some(u) = &model_usage {
+        add_token_metrics(&mut metrics, u);
     }
     write_metrics(&metrics_path, &metrics)?;
     println!("status={:?}", result.status);
@@ -511,9 +516,33 @@ fn add_retry_metrics(metrics: &mut serde_json::Value, retries: u32, wait_ms: u64
     }
 }
 
+/// Provider-reported token usage; null (not 0) when the provider omitted it.
+fn add_token_metrics(metrics: &mut serde_json::Value, u: &harness_model::UsageTotals) {
+    if let Some(obj) = metrics.as_object_mut() {
+        obj.insert("tokens_prompt".into(), json!(u.prompt));
+        obj.insert("tokens_completion".into(), json!(u.completion));
+        obj.insert("tokens_total".into(), json!(u.total));
+        obj.insert("tokens_reasoning".into(), json!(u.reasoning));
+    }
+}
+
 #[cfg(test)]
 mod retry_metrics_tests {
     use super::*;
+
+    #[test]
+    fn token_fields_written_and_null_when_missing() {
+        let mut m = json!({});
+        add_token_metrics(&mut m, &harness_model::UsageTotals {
+            prompt: Some(10), completion: Some(3), total: Some(13), reasoning: None,
+        });
+        assert_eq!(m["tokens_prompt"], 10);
+        assert_eq!(m["tokens_total"], 13);
+        assert!(m["tokens_reasoning"].is_null());
+        let mut m = json!({});
+        add_token_metrics(&mut m, &Default::default());
+        assert!(m["tokens_prompt"].is_null());
+    }
 
     #[test]
     fn retry_wait_fields_written() {

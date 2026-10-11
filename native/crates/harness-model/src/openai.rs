@@ -1,6 +1,7 @@
 //! OpenAI-compatible chat completions (non-stream first).
 //! Env: HARNESS_API_KEY | OPENAI_API_KEY, HARNESS_BASE_URL, HARNESS_MODEL.
-//! Streaming: TODO — wire SSE when non-stream path is solid.
+//! Streaming: TODO — wire SSE when non-stream path is solid. (Non-stream only,
+//! so token usage is read from each response body's `usage`.)
 
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
@@ -11,6 +12,8 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 const DEFAULT_BASE: &str = "https://api.openai.com/v1";
+/// Fixed UA: some provider edges (Cloudflare) reject unknown/missing agents.
+pub const USER_AGENT: &str = concat!("harness/", env!("CARGO_PKG_VERSION"));
 const DEFAULT_TIMEOUT_SECS: u64 = 60;
 /// Bounded provider retry (outside core): max retries per request.
 pub const MAX_RETRIES: u32 = 3;
@@ -83,6 +86,37 @@ pub struct OpenAiCompat {
     retry: RetryPolicy,
     retries: Arc<AtomicU32>,
     retry_wait_ms: Arc<AtomicU64>,
+    usage: Arc<std::sync::Mutex<UsageTotals>>,
+}
+
+/// Summed provider token usage over a run (measurement only). Each field is
+/// None until at least one response reported it; never defaults to 0.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct UsageTotals {
+    pub prompt: Option<u64>,
+    pub completion: Option<u64>,
+    pub total: Option<u64>,
+    pub reasoning: Option<u64>,
+}
+
+fn add_opt(a: &mut Option<u64>, b: Option<u64>) {
+    if let Some(b) = b {
+        *a = Some(a.unwrap_or(0) + b);
+    }
+}
+
+impl UsageTotals {
+    fn add(&mut self, u: &OaiUsage) {
+        add_opt(&mut self.prompt, u.prompt_tokens);
+        add_opt(&mut self.completion, u.completion_tokens);
+        add_opt(&mut self.total, u.total_tokens);
+        let r = u
+            .completion_tokens_details
+            .as_ref()
+            .and_then(|d| d.reasoning_tokens)
+            .or(u.reasoning_tokens);
+        add_opt(&mut self.reasoning, r);
+    }
 }
 
 impl std::fmt::Debug for OpenAiCompat {
@@ -156,6 +190,7 @@ impl OpenAiCompat {
             retry: RetryPolicy::default(),
             retries: Arc::new(AtomicU32::new(0)),
             retry_wait_ms: Arc::new(AtomicU64::new(0)),
+            usage: Arc::default(),
         })
     }
 
@@ -168,6 +203,7 @@ impl OpenAiCompat {
             retry: RetryPolicy::default(),
             retries: Arc::new(AtomicU32::new(0)),
             retry_wait_ms: Arc::new(AtomicU64::new(0)),
+            usage: Arc::default(),
         }
     }
 
@@ -189,6 +225,11 @@ impl OpenAiCompat {
     /// Total measured backoff sleep (ms) across all retries of this client.
     pub fn retry_wait_ms(&self) -> u64 {
         self.retry_wait_ms.load(Ordering::Relaxed)
+    }
+
+    /// Summed token usage reported by the provider across all responses.
+    pub fn usage_totals(&self) -> UsageTotals {
+        self.usage.lock().map(|u| u.clone()).unwrap_or_default()
     }
 
     pub fn with_timeout(mut self, timeout: Duration) -> Self {
@@ -261,6 +302,7 @@ impl OpenAiCompat {
             .post(url)
             .set("Authorization", &format!("Bearer {}", self.api_key))
             .set("Content-Type", "application/json")
+            .set("User-Agent", USER_AGENT)
             .send_json(body);
 
         let resp = match resp {
@@ -285,8 +327,35 @@ impl OpenAiCompat {
             Ok(t) => t,
             Err(e) => return Attempt::Retry(OpenAiError::Http(format!("read body: {e}")), None),
         };
+        if let Some(u) = parse_usage(&text) {
+            if let Ok(mut t) = self.usage.lock() {
+                t.add(&u);
+            }
+        }
         Attempt::Done(parse_chat_response(&text))
     }
+}
+
+fn parse_usage(text: &str) -> Option<OaiUsage> {
+    #[derive(Deserialize)]
+    struct U {
+        usage: Option<OaiUsage>,
+    }
+    serde_json::from_str::<U>(text).ok().and_then(|u| u.usage)
+}
+
+#[derive(Deserialize, Default)]
+struct OaiUsage {
+    prompt_tokens: Option<u64>,
+    completion_tokens: Option<u64>,
+    total_tokens: Option<u64>,
+    reasoning_tokens: Option<u64>,
+    completion_tokens_details: Option<OaiCompletionDetails>,
+}
+
+#[derive(Deserialize)]
+struct OaiCompletionDetails {
+    reasoning_tokens: Option<u64>,
 }
 
 fn parse_chat_response(text: &str) -> Result<ModelResponse, OpenAiError> {
@@ -670,6 +739,84 @@ mod retry_tests {
         // Backoff 50ms + 100ms (plus <=25% jitter each).
         let w = c.retry_wait_ms();
         assert!((150..1000).contains(&w), "retry_wait_ms={w}");
+    }
+
+    /// Like `serve` but captures request headers (lowercased) per hit.
+    fn serve_capture(responses: Vec<&'static str>) -> (String, Arc<Mutex<Vec<String>>>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let heads = Arc::new(Mutex::new(Vec::new()));
+        let h = heads.clone();
+        std::thread::spawn(move || {
+            for body in responses {
+                let Ok((mut s, _)) = listener.accept() else { return };
+                let mut r = BufReader::new(s.try_clone().unwrap());
+                let mut len = 0usize;
+                let mut head = String::new();
+                loop {
+                    let mut line = String::new();
+                    r.read_line(&mut line).unwrap();
+                    if line == "\r\n" || line.is_empty() { break; }
+                    let l = line.to_ascii_lowercase();
+                    if let Some(v) = l.strip_prefix("content-length:") {
+                        len = v.trim().parse().unwrap();
+                    }
+                    head.push_str(&l);
+                }
+                let mut buf = vec![0u8; len];
+                r.read_exact(&mut buf).unwrap();
+                h.lock().unwrap().push(head);
+                let resp = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                s.write_all(resp.as_bytes()).unwrap();
+            }
+        });
+        (format!("http://{addr}"), heads)
+    }
+
+    #[test]
+    fn usage_summed_across_responses() {
+        let a = r#"{"choices":[{"message":{"role":"assistant","content":"a"}}],"usage":{"prompt_tokens":100,"completion_tokens":20,"total_tokens":120,"completion_tokens_details":{"reasoning_tokens":5}}}"#;
+        let b = r#"{"choices":[{"message":{"role":"assistant","content":"b"}}],"usage":{"prompt_tokens":150,"completion_tokens":30,"total_tokens":180,"completion_tokens_details":{"reasoning_tokens":7}}}"#;
+        let (base, _) = serve_capture(vec![a, b]);
+        let c = client(&base);
+        c.complete_inner(&[], &[]).unwrap();
+        c.complete_inner(&[], &[]).unwrap();
+        assert_eq!(
+            c.usage_totals(),
+            UsageTotals { prompt: Some(250), completion: Some(50), total: Some(300), reasoning: Some(12) }
+        );
+    }
+
+    #[test]
+    fn usage_missing_stays_none() {
+        let (base, _) = serve_capture(vec![OK_BODY]);
+        let c = client(&base);
+        c.complete_inner(&[], &[]).unwrap();
+        assert_eq!(c.usage_totals(), UsageTotals::default());
+        assert!(c.usage_totals().prompt.is_none());
+    }
+
+    #[test]
+    fn usage_without_reasoning_leaves_reasoning_none() {
+        let a = r#"{"choices":[{"message":{"role":"assistant","content":"a"}}],"usage":{"prompt_tokens":10,"completion_tokens":2,"total_tokens":12}}"#;
+        let (base, _) = serve_capture(vec![a]);
+        let c = client(&base);
+        c.complete_inner(&[], &[]).unwrap();
+        let u = c.usage_totals();
+        assert_eq!(u.prompt, Some(10));
+        assert_eq!(u.reasoning, None);
+    }
+
+    #[test]
+    fn sends_fixed_user_agent() {
+        let (base, heads) = serve_capture(vec![OK_BODY]);
+        client(&base).complete_inner(&[], &[]).unwrap();
+        let h = heads.lock().unwrap()[0].clone();
+        let want = format!("user-agent: harness/{}", env!("CARGO_PKG_VERSION"));
+        assert!(h.contains(&want), "headers: {h}");
     }
 
     #[test]

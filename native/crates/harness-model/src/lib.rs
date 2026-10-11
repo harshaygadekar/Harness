@@ -4,7 +4,7 @@
 mod openai;
 mod scripted;
 
-pub use openai::{OpenAiCompat, OpenAiError, RetryPolicy};
+pub use openai::{OpenAiCompat, UsageTotals, USER_AGENT, OpenAiError, RetryPolicy};
 pub use scripted::{broken_add_fix_script, broken_calc_fix_script, ScriptedModel};
 
 pub use harness_core::{ModelClient, ModelResponse, ToolSpec};
