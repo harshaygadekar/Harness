@@ -194,6 +194,7 @@ name = "harness-tools"
 version = "0.1.0"
 dependencies = [
  "harness-core",
+ "libc",
  "regex",
  "serde",
  "serde_json",

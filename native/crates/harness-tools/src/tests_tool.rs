@@ -7,7 +7,7 @@ use std::time::Duration;
 use harness_core::{Tool, ToolError, ToolResult};
 use serde_json::{json, Value};
 
-use crate::bound::bound_excerpt;
+use crate::bound::bound_head_tail;
 use crate::workspace::Workspace;
 
 pub struct RunTests {
@@ -40,43 +40,27 @@ impl Tool for RunTests {
             });
         };
 
-        let mut child = Command::new(cmd[0])
-            .args(&cmd[1..])
-            .current_dir(root)
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn()
+        let mut c = Command::new(cmd[0]);
+        c.args(&cmd[1..]).current_dir(root);
+        let out = crate::proc::run(c, Duration::from_secs(120))
             .map_err(|e| ToolError::Failed(format!("{label}: {e}")))?;
-
-        let start = std::time::Instant::now();
-        loop {
-            match child.try_wait() {
-                Ok(Some(_)) => break,
-                Ok(None) if start.elapsed() > Duration::from_secs(120) => {
-                    let _ = child.kill();
-                    return Err(ToolError::Failed(format!("{label}: timeout 120s")));
-                }
-                Ok(None) => std::thread::sleep(Duration::from_millis(50)),
-                Err(e) => return Err(ToolError::Failed(e.to_string())),
-            }
+        if out.timed_out {
+            return Err(ToolError::Failed(format!("{label}: timeout 120s")));
         }
-        let out = child
-            .wait_with_output()
-            .map_err(|e| ToolError::Failed(e.to_string()))?;
-        let code = out.status.code().unwrap_or(-1);
-        let mut raw = String::from_utf8_lossy(&out.stdout).into_owned();
-        if !out.stderr.is_empty() {
+        let code = out.code.unwrap_or(-1);
+        let mut raw = out.stdout.render();
+        if out.stderr.total() > 0 {
             raw.push_str("\n--- stderr ---\n");
-            raw.push_str(&String::from_utf8_lossy(&out.stderr));
+            raw.push_str(&out.stderr.render());
         }
         let excerpt = failure_excerpt(&raw);
         let content = format!(
             "[{label}] exit {code}\n{}",
-            bound_excerpt(&excerpt, 8 * 1024)
+            bound_head_tail(&excerpt, 8 * 1024)
         );
         Ok(ToolResult {
             content,
-            ok: out.status.success(),
+            ok: out.success,
         })
     }
 }
@@ -91,7 +75,7 @@ fn looks_pytest(root: &std::path::Path) -> bool {
 /// Prefer FAIL/error lines; else last chunk.
 fn failure_excerpt(raw: &str) -> String {
     let lines: Vec<&str> = raw.lines().collect();
-    let mut interesting: Vec<&str> = lines
+    let interesting: Vec<&str> = lines
         .iter()
         .copied()
         .filter(|l| {
@@ -109,6 +93,15 @@ fn failure_excerpt(raw: &str) -> String {
         let start = lines.len().saturating_sub(40);
         return lines[start..].join("\n");
     }
-    interesting.truncate(60);
+    // Keep the first and last 30 matches: summary/failure names come last.
+    if interesting.len() > 60 {
+        let n = interesting.len();
+        return format!(
+            "{}\n…[{} matching lines omitted]…\n{}",
+            interesting[..30].join("\n"),
+            n - 60,
+            interesting[n - 30..].join("\n")
+        );
+    }
     interesting.join("\n")
 }

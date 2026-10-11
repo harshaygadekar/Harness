@@ -8,6 +8,7 @@ mod patch;
 mod search;
 mod shell;
 mod tests_tool;
+pub mod proc;
 mod workspace;
 
 pub use filesystem::{ListFiles, ReadFile, WriteFile};
@@ -120,5 +121,63 @@ mod tests {
         assert!(names.contains(&"git_diff"));
         assert!(!names.contains(&"run_shell"));
         assert!(coding_tool_names(true).contains(&"run_shell"));
+    }
+
+    fn tool<'a>(tools: &'a [Arc<dyn harness_core::Tool>], n: &str) -> &'a Arc<dyn harness_core::Tool> {
+        tools.iter().find(|t| t.name() == n).unwrap()
+    }
+
+    #[test]
+    fn shell_400kb_returns_quickly_with_tail() {
+        let ws = tmp_ws();
+        let tools = coding_tools(ws, true);
+        let t = std::time::Instant::now();
+        let r = tool(&tools, "run_shell")
+            .call(&json!({"command": "for i in $(seq 1 6000); do echo \"noise $i ...........................................................\"; done; echo TAIL_FAILURE_NAME"}))
+            .unwrap();
+        assert!(t.elapsed() < std::time::Duration::from_secs(10), "took {:?}", t.elapsed());
+        assert!(r.content.contains("…[omitted "), "no omitted marker");
+        assert!(r.content.contains("TAIL_FAILURE_NAME"), "tail missing");
+        assert!(r.ok);
+    }
+
+    #[test]
+    fn run_tests_large_output_shows_tail_failure() {
+        let ws = tmp_ws();
+        let root = ws.root().to_path_buf();
+        fs::write(root.join("Cargo.toml"), "[package]\nname = \"bigout\"\nversion = \"0.1.0\"\nedition = \"2021\"\n[workspace]\n").unwrap();
+        fs::create_dir_all(root.join("src")).unwrap();
+        fs::write(
+            root.join("src/lib.rs"),
+            "#[test] fn noisy() { for i in 0..6000 { println!(\"noise {i} ............................................................\"); } }\n#[test] fn zz_named_failure() { assert_eq!(1, 2, \"named failure message\"); }\n",
+        )
+        .unwrap();
+        let tools = coding_tools(ws, false);
+        let r = tool(&tools, "run_tests").call(&json!({})).unwrap();
+        assert!(!r.ok);
+        assert!(r.content.contains("zz_named_failure"), "{}", &r.content[..r.content.len().min(2000)]);
+    }
+
+    #[test]
+    fn fake_key_in_tool_output_is_scrubbed_before_model() {
+        use harness_core::{AllowList, Message, ModelClient, ModelResponse, Role, RunConfig, RunEvent, Runner, ToolCall, ToolSpec};
+        struct M(usize);
+        impl ModelClient for M {
+            fn complete(&mut self, _m: &[Message], _t: &[ToolSpec]) -> ModelResponse {
+                self.0 += 1;
+                let tool_calls = if self.0 == 1 {
+                    vec![ToolCall { id: "c1".into(), name: "run_shell".into(), arguments: json!({"command": "echo key=sk-FAKEKEY0123456789abcdef"}), extra_content: None }]
+                } else { vec![] };
+                ModelResponse { message: Message { role: Role::Assistant, content: Some("ok".into()), tool_calls, tool_call_id: None, name: None } }
+            }
+        }
+        let ws = tmp_ws();
+        let mut runner = Runner::new(Arc::new(AllowList::new(["run_shell"])));
+        for t in coding_tools(ws, true) { runner.register_tool(t); }
+        let res = runner.run(&mut M(0), "x", RunConfig { max_steps: 4 });
+        let seen: Vec<String> = res.events.iter().filter_map(|e| match e { RunEvent::ToolResult { content, .. } => Some(content.clone()), _ => None }).collect();
+        assert_eq!(seen.len(), 1);
+        assert!(seen[0].contains("[REDACTED]"), "{}", seen[0]);
+        assert!(!seen[0].contains("FAKEKEY"));
     }
 }
