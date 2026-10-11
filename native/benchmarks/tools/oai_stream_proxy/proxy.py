@@ -115,6 +115,64 @@ def rewrite_request(obj):
     return obj
 
 
+class Pacer:
+    """Holds each upstream request until min_interval_ms has passed since the previous one started.
+    Counts only (no headers, keys or bodies). min_interval_ms=0 disables holding."""
+
+    def __init__(self, min_interval_ms=0, clock=None, sleep=None):
+        import time
+        self.min_s = max(0, min_interval_ms) / 1000.0
+        self.clock = clock or time.monotonic
+        self.sleep = sleep or time.sleep
+        self.lock = threading.Lock()
+        self.reset()
+
+    def reset(self):
+        self.last_start = None
+        self.requests = 0
+        self.held = 0
+        self.hold_ms = 0.0
+        self.status_429 = 0
+
+    def wait(self):
+        """Block as needed, then mark this request as started. Returns hold ms for this request."""
+        with self.lock:  # serialises starts so the interval holds under concurrency
+            hold = 0.0
+            now = self.clock()
+            if self.min_s > 0 and self.last_start is not None:
+                hold = max(0.0, self.last_start + self.min_s - now)
+                if hold > 0:
+                    self.sleep(hold)
+                    now = self.clock()
+            self.last_start = now
+            self.requests += 1
+            if hold > 0:
+                self.held += 1
+                self.hold_ms += hold * 1000.0
+            return hold * 1000.0
+
+    def note_status(self, status):
+        if status == 429:
+            with self.lock:
+                self.status_429 += 1
+
+    def snapshot(self):
+        return {"min_interval_ms": int(self.min_s * 1000), "upstream_requests": self.requests,
+                "held_requests": self.held, "hold_ms": int(round(self.hold_ms)), "status_429": self.status_429}
+
+
+PACER = Pacer(0)
+HOLD_FILE = None  # optional path; rewritten with PACER.snapshot() after each upstream response
+
+
+def write_hold_file():
+    if HOLD_FILE:
+        tmp = HOLD_FILE + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(PACER.snapshot(), f)
+        os.replace(tmp, HOLD_FILE)
+
+
 class H(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -137,9 +195,12 @@ class H(BaseHTTPRequestHandler):
             hdrs["Authorization"] = self.headers["Authorization"]
         if self.headers.get("Accept"):
             hdrs["Accept"] = self.headers["Accept"]
+        PACER.wait()
         conn.request(self.command, u.path + path, body=body, headers=hdrs)
         r = conn.getresponse()
         ctype = r.getheader("Content-Type", "")
+        PACER.note_status(r.status)
+        write_hold_file()
         sys.stderr.write(f"{self.command} {path.split('?')[0]} -> {r.status}\n")
         if "text/event-stream" in ctype and r.status == 200:
             self.send_response(200)
@@ -200,10 +261,21 @@ def make_server(port):
 
 
 if __name__ == "__main__":
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8787
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("port", nargs="?", type=int, default=8787)
+    ap.add_argument("--min-interval-ms", type=int, default=0,
+                    help="hold each upstream request until this long after the previous one started (0 = off)")
+    ap.add_argument("--hold-file", default=None, help="write per-run pacing counts (JSON, counts only) here")
+    a = ap.parse_args()
+    port = a.port
+    PACER = Pacer(a.min_interval_ms)
+    HOLD_FILE = a.hold_file
+    write_hold_file()
     srv = make_server(port)
-    sys.stderr.write(f"oai_stream_proxy on 127.0.0.1:{port} sig_mode={SIG_MODE}\n")
+    sys.stderr.write(f"oai_stream_proxy on 127.0.0.1:{port} sig_mode={SIG_MODE} min_interval_ms={a.min_interval_ms}\n")
     try:
         srv.serve_forever()
     finally:
         sys.stderr.write(f"stats {json.dumps(STATS)}\n")
+        sys.stderr.write(f"pacing {json.dumps(PACER.snapshot())}\n")

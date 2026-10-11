@@ -47,3 +47,14 @@ whether re-injection is needed
 **Empirical result (2026-10-11):** with `strip`, the second turn returns HTTP 400 `Function call is missing a
 thought_signature in functionCall parts`. With `reinject`, it returns 200. So signatures must be round-tripped, and
 `reinject` is used for all bench runs for both agents.
+
+## Pacing (`--min-interval-ms`)
+    python3 proxy.py 8787 --min-interval-ms 5000 --hold-file /path/run/proxy_hold.json
+
+Optional, default `0` (no holding; behaviour unchanged). When set, each upstream request is held until at least
+that many ms have passed since the previous upstream request started (starts are serialised under a lock).
+Pacing lives in the proxy so every agent behind it gets the same delay; neither agent is changed.
+Counts are kept per process (use a fresh process, or `Pacer.reset()`, per run): `upstream_requests`,
+`held_requests`, `hold_ms`, `status_429`. With `--hold-file` they are rewritten as JSON after every upstream
+response, and printed as a `pacing {...}` line on shutdown. Counts only: no headers, keys or bodies.
+Covered by the `Pacing` tests in `test_proxy.py`.

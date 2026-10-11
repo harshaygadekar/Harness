@@ -74,3 +74,35 @@ class T(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Pacing(unittest.TestCase):
+    def _fake(self):
+        st = {"t": 100.0, "slept": []}
+        def sleep(s):
+            st["slept"].append(s); st["t"] += s
+        return st, (lambda: st["t"]), sleep
+
+    def test_default_zero_never_holds(self):
+        st, clock, sleep = self._fake()
+        p = proxy.Pacer(0, clock, sleep)
+        for _ in range(3):
+            self.assertEqual(p.wait(), 0.0)
+        self.assertEqual(st["slept"], [])
+        self.assertEqual(p.snapshot()["hold_ms"], 0)
+
+    def test_min_interval_holds_and_counts(self):
+        st, clock, sleep = self._fake()
+        p = proxy.Pacer(5000, clock, sleep)
+        p.wait()                      # first: no hold
+        st["t"] += 2.0
+        self.assertAlmostEqual(p.wait(), 3000.0)  # held 3 s
+        st["t"] += 6.0
+        self.assertEqual(p.wait(), 0.0)           # already past interval
+        p.note_status(429); p.note_status(200)
+        snap = p.snapshot()
+        self.assertEqual(snap, {"min_interval_ms": 5000, "upstream_requests": 3, "held_requests": 1,
+                                "hold_ms": 3000, "status_429": 1})
+        p.reset()
+        self.assertEqual(p.snapshot()["upstream_requests"], 0)
+        self.assertEqual(p.wait(), 0.0)  # reset clears last start too
