@@ -457,3 +457,35 @@ This is a request-shape rejection by the Cerebras qwen chat template, not a stre
 | Harness | 3 / 3 of 3 | 5513 / 7157 / 9949 | 6 | 12 | 16722 |
 
 Token use for the set: about 51k input / 18k output tokens (Harness only; fx sent no completed requests). Run folders: `native/benchmarks/head_to_head/runs/T1-broken_calc-trackB-{fx,harness}-cerebras-C-*` (gitignored).
+
+## T1 v2 (no hints): Flash-Lite via stream proxy
+
+Label: **same weak model, free tier**. T1 v2 rows only. Not pooled with any T1 v1 set. Measurements only; no claim about either agent.
+
+Date 2026-10-11 (IST). Fixture `native/fixtures/broken_calc_v2/` (content SHA-256 `3180ddf3…f7b6`), task pack `native/benchmarks/head_to_head/T1v2_broken_calc/` frozen at `20baad1`. Harness binary built at `e013766` (harness crates as `7080c56` plus the scripted v2 sequence; the openai path is unchanged). fx 0.0.13 (`/tmp/fxbin`, binary sha256 `00def23f…120c`, reinstalled from `fx.sh/setup.sh`, script sha256 `254c2d44…f924f`), not patched. Order V-F1, V-H1, V-F2, V-H2, V-F3, V-H3, 60 s between runs.
+
+**Controlled:** model `gemini-3.5-flash-lite` for both agents; same key, free tier; both agents pointed at the same stream proxy (`native/benchmarks/tools/oai_stream_proxy`, `127.0.0.1:8787` only, `PROXY_SIG_MODE=reinject` signature add-back, `finish_reason` rewrite; fresh proxy process per run); prompt = only the fenced block of the v2 TASK.md; fresh v2 copy per run with `target/` removed and no ORACLE.md or SUCCESS.md; 8-minute timeout; same box; success = operator `cargo test` exit 0 on the copy after the run.
+
+**Uncontrolled:** system prompt; tool surface (fx built-in tools vs Harness coding+shell); step cap (Harness `--max-steps 24`, fx default); permission modes (fx `fx ask --json --no-save --auto`; Harness `--allow coding,shell`). Harness ran with `--allow coding,shell`, so shell was on and this is not a test of deny-all. Retry behaviour also differs: Harness retries a 429 at most 3 times (≤30 s); fx retries 429s internally and does not report the count or wait, so the fx column gives the 429 count seen at the proxy and "unknown" for wait.
+
+| Run | Agent | cargo test | wall_ms | retries / wait ms | turns (Harness) / steps (fx) | tool calls ok/fail/dup | files read / modified | tokens in / out / reasoning | stop reason |
+|---|---|---|---|---|---|---|---|---|---|
+| V-F1 | fx (`--auto`) | pass | 78981 | 7 × 429 at proxy / unknown | 13 | 10/3/7 | 5 read_file calls / 2 (midpoint.rs, percent.rs) | 109171 / 782 / n/a | fx exit 0, final answer |
+| V-H1 | Harness (`--allow coding,shell`) | fail (7 passed, 3 failed) | 28299 | 3 / 16586 | 17 | 13/3/3 | 7 / 1 (midpoint.rs) | 41167 / 355 / null | HTTP 429 quota on 4 attempts after 3 retries; stopped before a percent.rs edit |
+| V-F2 | fx (`--auto`) | pass | 73366 | 13 × 429 at proxy / unknown | 19 | 12/7/12 | 5 read_file calls / 2 (midpoint.rs, percent.rs) | 186435 / 2019 / n/a | fx exit 0, final answer |
+| V-H2 | Harness (`--allow coding,shell`) | pass | 12747 | 0 / 0 | 17 | 13/3/3 | 6 / 2 (midpoint.rs, percent.rs) | 45249 / 766 / null | done: Succeeded |
+| V-F3 | fx (`--auto`) | pass | 36887 | 8 × 429 at proxy / unknown | 14 | 9/5/6 | 2 read_file calls / 2 (midpoint.rs, percent.rs) | 132457 / 1862 / n/a | fx exit 0, final answer |
+| V-H3 | Harness (`--allow coding,shell`) | pass | 21206 | 0 / 0 | 17 | 14/2/2 | 7 / 2 (midpoint.rs, percent.rs) | 61626 / 4025 / null | done: Succeeded |
+
+wall_ms is operator-measured around the agent process (includes retry waits and fx's internal 429 back-off). fx files-read paths are not in its JSON output. fx "dup" = repeated identical name+status+command entries, a coarser measure than Harness's. Harness V-H1 and V-H3 read `notes/OLD_BUGS.md` (a stale-notes decoy); neither edited it. The V-H1 429 body does not state the quota window; later runs got HTTP 200, so it was not a daily-quota stop.
+
+**Oracle check:** every diff touched only `src/percent.rs` and/or `src/midpoint.rs`. No run changed a test. V-H1 fixed only `midpoint.rs` before it stopped.
+
+**Summary over finished runs (finished = operator `cargo test` pass):**
+
+| Agent | finished of runs | wall ms min / median / max | median turns or steps | median tool calls | median input tokens |
+|---|---|---|---|---|---|
+| fx | 3 of 3 | 36887 / 73366 / 78981 | 14 | 14 | 132457 |
+| Harness | 2 of 3 | 12747 / 16977 / 21206 | 17 | 16 | 53438 |
+
+Harness median over two finished runs is the mean of the two. The fx and Harness turn counts measure different things (fx steps vs Harness model turns) and are not directly comparable. Run folders: `native/benchmarks/head_to_head/runs/T1v2-broken_calc-trackB-{fx,harness}-proxy-V-*` (gitignored; usage numbers only).
