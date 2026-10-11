@@ -35,6 +35,9 @@ impl Default for MetricsMeta {
     }
 }
 
+/// Git SHA the harness binary was built from (build.rs). `commit_sha` is the run-time cwd HEAD.
+pub const HARNESS_BUILD_SHA: &str = env!("HARNESS_BUILD_SHA");
+
 pub fn detect_commit_sha() -> String {
     Command::new("git")
         .args(["rev-parse", "HEAD"])
@@ -306,6 +309,7 @@ pub fn aggregate(events: &[RunEvent], meta: &MetricsMeta) -> Value {
         "fixture_path": meta.fixture_path,
         "fixture_version": meta.fixture_version,
         "commit_sha": meta.commit_sha,
+        "harness_sha": HARNESS_BUILD_SHA,
         "machine_class": meta.machine_class,
         "model_mode": model_mode,
         "measured_at": measured_at_ist(),
@@ -405,5 +409,14 @@ mod tests {
         assert_eq!(m["exit_status"], "max_turns");
         assert_eq!(m["task_success"], true);
         assert_eq!(m["run_ok"], true);
+    }
+
+    #[test]
+    fn records_harness_build_sha() {
+        let m = aggregate(&[RunEvent::done("Succeeded", 1)], &MetricsMeta::default());
+        let sha = m["harness_sha"].as_str().unwrap();
+        assert_eq!(sha, HARNESS_BUILD_SHA);
+        assert!(!sha.is_empty());
+        assert!(sha == "unknown" || sha.len() >= 40, "{sha}");
     }
 }

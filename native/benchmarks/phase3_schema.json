@@ -65,6 +65,11 @@
       "type": "string",
       "minLength": 1
     },
+    "harness_sha": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Git SHA the harness binary was built from (suffix -dirty if built from a modified tree); commit_sha is the cwd repo HEAD at run time"
+    },
     "machine_class": {
       "type": "string",
       "minLength": 1
