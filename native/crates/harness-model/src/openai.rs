@@ -112,22 +112,30 @@ fn redact_keys(s: &str) -> String {
     let is_key = |c: char| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.';
     let mut out = String::with_capacity(s.len());
     let mut i = 0;
+    let mut prev_is_key = false;
     'outer: while i < s.len() {
-        for pat in PATS {
-            if s[i..].starts_with(pat) {
-                let mut j = i + pat.len();
-                while let Some(c) = s[j..].chars().next() {
-                    if !is_key(c) { break; }
-                    j += c.len_utf8();
+        // Only match a prefix at a token boundary: start of string, or the
+        // previous char is not a key character (ASCII alnum / - _ .).
+        if !prev_is_key {
+            for pat in PATS {
+                if s[i..].starts_with(pat) {
+                    let mut j = i + pat.len();
+                    while let Some(c) = s[j..].chars().next() {
+                        if !is_key(c) { break; }
+                        j += c.len_utf8();
+                    }
+                    out.push_str(pat);
+                    out.push_str("[redacted]");
+                    // Last consumed input char determines the next boundary.
+                    prev_is_key = s[..j].chars().last().map(is_key).unwrap_or(false);
+                    i = j;
+                    continue 'outer;
                 }
-                out.push_str(pat);
-                out.push_str("[redacted]");
-                i = j;
-                continue 'outer;
             }
         }
         let c = s[i..].chars().next().unwrap();
         out.push(c);
+        prev_is_key = is_key(c);
         i += c.len_utf8();
     }
     out
@@ -524,6 +532,33 @@ mod retry_tests {
         assert!(!out.contains("x1y2z3"), "leaked: {out}");
         assert!(out.contains("csk-[redacted]"));
         assert!(out.contains("Bearer [redacted]"));
+    }
+
+    #[test]
+    fn scrub_skips_embedded_sk_in_ordinary_words() {
+        for word in ["task-list", "disk-usage", "risk-level"] {
+            let out = scrub_http_body(word);
+            assert_eq!(out, word, "ordinary word was redacted: {out}");
+        }
+    }
+
+    #[test]
+    fn scrub_redacts_keys_at_token_boundaries() {
+        let csk = format!("csk-{}", "fakeval".repeat(4));
+        let sk = format!("sk-{}", "fakeval".repeat(4));
+        let bearer = format!("tok-{}", "fakeval".repeat(4));
+
+        let a = scrub_http_body(&format!("key={csk}"));
+        assert!(!a.contains("fakeval"), "leaked: {a}");
+        assert!(a.contains("csk-[redacted]"), "{a}");
+
+        let b = scrub_http_body(&format!("({sk})"));
+        assert!(!b.contains("fakeval"), "leaked: {b}");
+        assert!(b.contains("sk-[redacted]"), "{b}");
+
+        let c = scrub_http_body(&format!("Authorization: Bearer {bearer}"));
+        assert!(!c.contains("fakeval"), "leaked: {c}");
+        assert!(c.contains("Bearer [redacted]"), "{c}");
     }
 
     #[test]
