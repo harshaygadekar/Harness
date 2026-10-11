@@ -102,12 +102,33 @@ impl std::fmt::Debug for OpenAiCompat {
 
 fn scrub_http_body(s: &str) -> String {
     // Jessie: truncate + redact common key prefixes from provider error bodies.
-    let mut out: String = s.chars().take(400).collect();
-    for pat in ["AIza", "sk-", "Bearer "] {
-        if let Some(i) = out.find(pat) {
-            let end = (i + pat.len() + 8).min(out.len());
-            out.replace_range(i..end, &format!("{pat}[redacted]"));
+    // Redacts the WHOLE token (all key-ish chars) for every occurrence.
+    let out: String = s.chars().take(400).collect();
+    redact_keys(&out)
+}
+
+fn redact_keys(s: &str) -> String {
+    const PATS: [&str; 4] = ["csk-", "AIza", "sk-", "Bearer "];
+    let is_key = |c: char| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.';
+    let mut out = String::with_capacity(s.len());
+    let mut i = 0;
+    'outer: while i < s.len() {
+        for pat in PATS {
+            if s[i..].starts_with(pat) {
+                let mut j = i + pat.len();
+                while let Some(c) = s[j..].chars().next() {
+                    if !is_key(c) { break; }
+                    j += c.len_utf8();
+                }
+                out.push_str(pat);
+                out.push_str("[redacted]");
+                i = j;
+                continue 'outer;
+            }
         }
+        let c = s[i..].chars().next().unwrap();
+        out.push(c);
+        i += c.len_utf8();
     }
     out
 }
@@ -493,6 +514,16 @@ mod retry_tests {
         assert_eq!(r.message.content.as_deref(), Some("hi"));
         assert_eq!(*hits.lock().unwrap(), 2);
         assert_eq!(c.retry_count(), 1);
+    }
+
+    #[test]
+    fn scrub_redacts_full_csk_key_everywhere() {
+        let fake = format!("csk-{}", "x1y2z3".repeat(8));
+        let body = format!("{{\"error\":\"invalid key {fake}\",\"echo\":\"Bearer {fake}\"}}");
+        let out = scrub_http_body(&body);
+        assert!(!out.contains("x1y2z3"), "leaked: {out}");
+        assert!(out.contains("csk-[redacted]"));
+        assert!(out.contains("Bearer [redacted]"));
     }
 
     #[test]
