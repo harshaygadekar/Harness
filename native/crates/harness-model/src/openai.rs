@@ -2,6 +2,8 @@
 //! Env: HARNESS_API_KEY | OPENAI_API_KEY, HARNESS_BASE_URL, HARNESS_MODEL.
 //! Streaming: TODO — wire SSE when non-stream path is solid.
 
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 use harness_core::{Message, ModelClient, ModelResponse, Role, ToolCall, ToolSpec};
@@ -10,6 +12,55 @@ use thiserror::Error;
 
 const DEFAULT_BASE: &str = "https://api.openai.com/v1";
 const DEFAULT_TIMEOUT_SECS: u64 = 60;
+/// Bounded provider retry (outside core): max retries per request.
+pub const MAX_RETRIES: u32 = 3;
+const DEFAULT_BACKOFF_BASE: Duration = Duration::from_secs(2);
+/// Cap on total added wait across retries of a single request.
+const MAX_TOTAL_RETRY_WAIT: Duration = Duration::from_secs(30);
+
+/// Retry policy knobs (tests shrink the backoff base).
+#[derive(Clone, Debug)]
+pub struct RetryPolicy {
+    pub max_retries: u32,
+    pub backoff_base: Duration,
+    pub max_total_wait: Duration,
+}
+
+impl Default for RetryPolicy {
+    fn default() -> Self {
+        Self {
+            max_retries: MAX_RETRIES,
+            backoff_base: DEFAULT_BACKOFF_BASE,
+            max_total_wait: MAX_TOTAL_RETRY_WAIT,
+        }
+    }
+}
+
+fn is_retryable_status(code: u16) -> bool {
+    matches!(code, 429 | 500 | 502 | 503 | 504)
+}
+
+/// Small jitter (0..=25% of d) without pulling a rand dependency.
+fn jitter(d: Duration) -> Duration {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|t| t.subsec_nanos())
+        .unwrap_or(0) as u64;
+    let max = d.as_millis() as u64 / 4;
+    if max == 0 {
+        return d;
+    }
+    d + Duration::from_millis(nanos % (max + 1))
+}
+
+fn parse_retry_after(v: Option<&str>) -> Option<Duration> {
+    v.and_then(|s| s.trim().parse::<u64>().ok()).map(Duration::from_secs)
+}
+
+enum Attempt {
+    Done(Result<ModelResponse, OpenAiError>),
+    Retry(OpenAiError, Option<Duration>),
+}
 
 #[derive(Debug, Error)]
 pub enum OpenAiError {
@@ -29,6 +80,8 @@ pub struct OpenAiCompat {
     base_url: String,
     model: String,
     timeout: Duration,
+    retry: RetryPolicy,
+    retries: Arc<AtomicU32>,
 }
 
 impl std::fmt::Debug for OpenAiCompat {
@@ -39,6 +92,7 @@ impl std::fmt::Debug for OpenAiCompat {
             .field("base_url", &self.base_url)
             .field("model", &self.model)
             .field("timeout", &self.timeout)
+            .field("retries", &self.retries.load(Ordering::Relaxed))
             .finish()
     }
 }
@@ -68,6 +122,8 @@ impl OpenAiCompat {
             base_url: base_url.trim_end_matches('/').to_string(),
             model,
             timeout: Duration::from_secs(DEFAULT_TIMEOUT_SECS),
+            retry: RetryPolicy::default(),
+            retries: Arc::new(AtomicU32::new(0)),
         })
     }
 
@@ -77,7 +133,24 @@ impl OpenAiCompat {
             base_url: base_url.into().trim_end_matches('/').to_string(),
             model: model.into(),
             timeout: Duration::from_secs(DEFAULT_TIMEOUT_SECS),
+            retry: RetryPolicy::default(),
+            retries: Arc::new(AtomicU32::new(0)),
         }
+    }
+
+    pub fn with_retry_policy(mut self, retry: RetryPolicy) -> Self {
+        self.retry = retry;
+        self
+    }
+
+    /// Total provider retries performed by this client (all requests).
+    pub fn retry_count(&self) -> u32 {
+        self.retries.load(Ordering::Relaxed)
+    }
+
+    /// Shared counter handle (survives moves of the client).
+    pub fn retry_counter(&self) -> Arc<AtomicU32> {
+        self.retries.clone()
     }
 
     pub fn with_timeout(mut self, timeout: Duration) -> Self {
@@ -107,25 +180,79 @@ impl OpenAiCompat {
             .timeout_read(self.timeout)
             .build();
 
+        let mut attempt: u32 = 0;
+        let mut waited = Duration::ZERO;
+        loop {
+            match self.attempt_once(&agent, &url, &body) {
+                Attempt::Done(r) => return r,
+                Attempt::Retry(err, retry_after) => {
+                    if attempt >= self.retry.max_retries {
+                        return Err(err);
+                    }
+                    let backoff = jitter(self.retry.backoff_base * 2u32.pow(attempt));
+                    let mut wait = retry_after.unwrap_or(backoff);
+                    let remaining = self.retry.max_total_wait.saturating_sub(waited);
+                    if remaining.is_zero() {
+                        return Err(err);
+                    }
+                    if wait > remaining {
+                        wait = remaining;
+                    }
+                    // Log only the scrubbed error class; never the key.
+                    eprintln!(
+                        "model retry {}/{} after {} ms: {}",
+                        attempt + 1,
+                        self.retry.max_retries,
+                        wait.as_millis(),
+                        err.to_string().lines().next().unwrap_or("")
+                    );
+                    std::thread::sleep(wait);
+                    waited += wait;
+                    attempt += 1;
+                    self.retries.fetch_add(1, Ordering::Relaxed);
+                }
+            }
+        }
+    }
+
+    fn attempt_once(&self, agent: &ureq::Agent, url: &str, body: &ChatRequest) -> Attempt {
         let resp = agent
-            .post(&url)
+            .post(url)
             .set("Authorization", &format!("Bearer {}", self.api_key))
             .set("Content-Type", "application/json")
-            .send_json(&body);
+            .send_json(body);
 
         let resp = match resp {
             Ok(r) => r,
             Err(ureq::Error::Status(code, r)) => {
+                let retry_after = parse_retry_after(r.header("retry-after"));
                 let body = r.into_string().unwrap_or_default();
                 let body = scrub_http_body(&body);
-                return Err(OpenAiError::Http(format!("status {code}: {body}")));
+                let err = OpenAiError::Http(format!("status {code}: {body}"));
+                return if is_retryable_status(code) {
+                    Attempt::Retry(err, retry_after)
+                } else {
+                    Attempt::Done(Err(err))
+                };
             }
-            Err(e) => return Err(OpenAiError::Http(e.to_string())),
+            // Transport: connect error, DNS, timeout, reset — all retryable.
+            Err(e) => return Attempt::Retry(OpenAiError::Http(e.to_string()), None),
         };
 
-        let parsed: ChatResponse = resp
-            .into_json()
-            .map_err(|e| OpenAiError::Parse(e.to_string()))?;
+        // Read timeouts can also surface while reading the body.
+        let text = match resp.into_string() {
+            Ok(t) => t,
+            Err(e) => return Attempt::Retry(OpenAiError::Http(format!("read body: {e}")), None),
+        };
+        Attempt::Done(parse_chat_response(&text))
+    }
+}
+
+fn parse_chat_response(text: &str) -> Result<ModelResponse, OpenAiError> {
+    {
+
+        let parsed: ChatResponse =
+            serde_json::from_str(text).map_err(|e| OpenAiError::Parse(e.to_string()))?;
 
         let choice = parsed
             .choices
@@ -293,6 +420,105 @@ fn from_openai_message(m: OaiMessage) -> Message {
         tool_calls,
         tool_call_id: m.tool_call_id,
         name: m.name,
+    }
+}
+
+#[cfg(test)]
+mod retry_tests {
+    use super::*;
+    use std::io::{BufRead, BufReader, Read, Write};
+    use std::net::TcpListener;
+    use std::sync::Mutex;
+
+    const OK_BODY: &str = r#"{"choices":[{"message":{"role":"assistant","content":"hi"}}]}"#;
+
+    /// Serves canned (status, body) responses in order; returns base URL + hit counter.
+    fn serve(responses: Vec<(u16, &'static str)>) -> (String, Arc<Mutex<u32>>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let hits = Arc::new(Mutex::new(0u32));
+        let h = hits.clone();
+        std::thread::spawn(move || {
+            for (status, body) in responses {
+                let Ok((mut s, _)) = listener.accept() else { return };
+                let mut r = BufReader::new(s.try_clone().unwrap());
+                let mut len = 0usize;
+                loop {
+                    let mut line = String::new();
+                    r.read_line(&mut line).unwrap();
+                    if line == "\r\n" || line.is_empty() { break; }
+                    let l = line.to_ascii_lowercase();
+                    if let Some(v) = l.strip_prefix("content-length:") {
+                        len = v.trim().parse().unwrap();
+                    }
+                }
+                let mut buf = vec![0u8; len];
+                r.read_exact(&mut buf).unwrap();
+                *h.lock().unwrap() += 1;
+                let resp = format!(
+                    "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                s.write_all(resp.as_bytes()).unwrap();
+            }
+        });
+        (format!("http://{addr}"), hits)
+    }
+
+    fn client(base: &str) -> OpenAiCompat {
+        OpenAiCompat::new("test-key", base, "m").with_retry_policy(RetryPolicy {
+            max_retries: 3,
+            backoff_base: Duration::from_millis(5),
+            max_total_wait: Duration::from_secs(5),
+        })
+    }
+
+    #[test]
+    fn retries_on_503_then_succeeds() {
+        let (base, hits) = serve(vec![(503, r#"{"error":"busy"}"#), (200, OK_BODY)]);
+        let c = client(&base);
+        let r = c.complete_inner(&[], &[]).expect("should succeed after retry");
+        assert_eq!(r.message.content.as_deref(), Some("hi"));
+        assert_eq!(*hits.lock().unwrap(), 2);
+        assert_eq!(c.retry_count(), 1);
+    }
+
+    #[test]
+    fn no_retry_on_400() {
+        let (base, hits) = serve(vec![(400, r#"{"error":"bad sk-abcdefghijkl"}"#), (200, OK_BODY)]);
+        let c = client(&base);
+        let e = c.complete_inner(&[], &[]).unwrap_err().to_string();
+        assert!(e.contains("status 400"));
+        assert!(!e.contains("abcdefgh"), "scrub kept: {e}");
+        assert_eq!(*hits.lock().unwrap(), 1);
+        assert_eq!(c.retry_count(), 0);
+    }
+
+    #[test]
+    fn gives_up_after_max_retries() {
+        let (base, hits) = serve(vec![(503, "{}"), (502, "{}"), (429, "{}"), (500, "{}"), (200, OK_BODY)]);
+        let c = client(&base);
+        let e = c.complete_inner(&[], &[]).unwrap_err().to_string();
+        assert!(e.contains("status 500"), "{e}");
+        assert_eq!(*hits.lock().unwrap(), 4);
+        assert_eq!(c.retry_count(), 3);
+    }
+
+    #[test]
+    fn retries_on_connection_error() {
+        // Bind then drop: port refuses connections.
+        let addr = TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap();
+        let c = client(&format!("http://{addr}"));
+        assert!(c.complete_inner(&[], &[]).is_err());
+        assert_eq!(c.retry_count(), 3);
+    }
+
+    #[test]
+    fn retry_after_header_parsed() {
+        assert_eq!(parse_retry_after(Some("7")), Some(Duration::from_secs(7)));
+        assert_eq!(parse_retry_after(Some("Wed, 21 Oct")), None);
+        assert!(!is_retryable_status(404));
+        assert!(is_retryable_status(504));
     }
 }
 

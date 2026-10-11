@@ -336,6 +336,7 @@ fn ask_cmd(
     let allow_names = expand_allow(allow, false);
     let runner = build_runner(&allow_names, workspace)?;
 
+    let mut model_retries: Option<u32> = None;
     let result = match model_name {
         "fake" => {
             let mut model = FakeModel::new();
@@ -353,7 +354,9 @@ fn ask_cmd(
         "openai" => {
             let mut model =
                 OpenAiCompat::from_env().map_err(|e| format!("openai model: {e}"))?;
-            runner.run(&mut model, prompt, RunConfig { max_steps })
+            let r = runner.run(&mut model, prompt, RunConfig { max_steps });
+            model_retries = Some(model.retry_count());
+            r
         }
         other => return Err(format!("unknown model '{other}' (use fake|scripted|openai)")),
     };
@@ -373,7 +376,13 @@ fn ask_cmd(
         machine_class: format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH),
         source_run_jsonl: path.display().to_string(),
     };
-    let metrics = aggregate(&result.events, &meta);
+    let mut metrics = aggregate(&result.events, &meta);
+    if let Some(n) = model_retries {
+        if let Some(obj) = metrics.as_object_mut() {
+            obj.insert("model_retries".into(), json!(n));
+        }
+        let _ = fs::write(record_dir.join("model_retries.txt"), format!("{n}\n"));
+    }
     write_metrics(&metrics_path, &metrics)?;
     println!("status={:?}", result.status);
     println!("steps={}", result.steps);
