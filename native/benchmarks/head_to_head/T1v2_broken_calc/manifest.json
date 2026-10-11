@@ -1,0 +1,16 @@
+{
+  "task_id": "T1v2/broken_calc_v2",
+  "category": "bug_fix",
+  "fixture_path": "native/fixtures/broken_calc_v2",
+  "fixture_content_sha256": "3180ddf315384f5e66015878ff8a1b6e4e5ebfabb94c6203eff80a5eb014f7b6",
+  "agent_prompt_file": "TASK.md",
+  "success_file": "SUCCESS.md",
+  "oracle_file": "ORACLE.md",
+  "success_command": "cargo test",
+  "requires_inspect": true,
+  "leaks_implementation_in_prompt": false,
+  "leaks_implementation_in_tree": false,
+  "supersedes": "T1/broken_calc (v1, bugs labeled in source)",
+  "phase": 4,
+  "status": "frozen"
+}

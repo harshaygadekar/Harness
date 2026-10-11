@@ -1,0 +1,11 @@
+[package]
+name = "broken_calc"
+version = "0.2.0"
+edition = "2021"
+description = "Small calculator helpers"
+
+# Independent package: do not join parent native/ workspace.
+[workspace]
+
+[lib]
+path = "src/lib.rs"
