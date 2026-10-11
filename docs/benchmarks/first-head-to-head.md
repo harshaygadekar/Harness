@@ -304,3 +304,25 @@ Forbidden:
 ## 12. Run checklist (Mike / Jessie)
 
 See [`../research/15-phase4-first-bench.md`](../research/15-phase4-first-bench.md) § checklist.
+
+---
+
+## 13. Track B reruns after adapter retry (2026-10-11)
+
+**Build change:** harness SHA `29d1f583c42cca84e3bf68a4b97028e3a3656157` adds bounded provider retry in `harness-model` OpenAiCompat (outside core): retry on transport error/timeout and HTTP 429/500/502/503/504, max 3 retries, backoff ~2s/4s/8s + jitter, total added wait capped at 30s, Retry-After honored. r3–r5 are **not** the same build as r1/r2 (`e435905` era). `model_retries` is now written to metrics.json and `model_retries.txt`.
+
+Same machine (linux-x86_64, 8 vCPU Xeon, 16 GB), model `gemini-3.5-flash` via Gemini OpenAI-compatible endpoint, flags `ask --model openai --allow coding,shell --max-steps 24`, exact TASK.md prompt, fresh fixture copy, 8-min timeout.
+
+| Run | Agent | Success (`cargo test`) | wall_time_ms | Tool calls | Fails | Model turns | Files modified | Retries | Stop reason |
+|-----|-------|------------------------|--------------|------------|-------|-------------|----------------|---------|-------------|
+| r3 | Harness | no (exit 101) | 25094 | 7 | 1 | 8 | 0 | 3 | After run_tests + 6 reads, provider returned HTTP 429 (free-tier request quota, limit 5) on every attempt; gave up after 3 retries before any edit. |
+| r4 | Harness | no (exit 101) | 15804 | 0 | 0 | 1 | 0 | 3 | First model request got HTTP 429 quota on all 4 attempts; no tool calls. |
+| r5 | Harness | no (exit 101) | 17957 | 1 | 1 | 2 | 0 | 3 | After one run_tests call, HTTP 429 quota on all 4 attempts; no edit. |
+| fx-1 | fx 0.0.13 (rev 4d966e272cfc) | no (exit 101) | 1476 | 0 | — | 0 steps | 0 | n/a | fx exited 1 with `error: InvalidChunk` before any step; run started right after r5 hit quota, root cause (quota error body vs. stream incompatibility) not determined. |
+| fx-2 | fx 0.0.13 (rev 4d966e272cfc) | no (exit 101) | 1427 | 0 | — | 0 steps | 0 | n/a | Same `InvalidChunk` after a 75 s wait; not determined whether quota or provider stream format. |
+
+**Finished runs:** none reached success, so no min/median/max wall time is reported.
+
+**Observation:** the retry fired as designed (3 per run), but the failure in r3–r5 was a quota 429 with a per-window request limit of 5; a ≤30 s retry budget does not outlast that window. No conclusion about agent quality is drawn from these rows.
+
+**fx setup (no sign-in):** installed via `https://fx.sh/setup.sh` (script sha256 `254c2d44…f924f`), binary sha256 `00def23f…120c`. Uses a custom `openai-chat-completions` connection in `~/.fx/settings.json` pointing at the Gemini OpenAI-compatible base URL with bearer key from an env var, so the same model id is selectable. Ran `fx ask --json --no-save --full-access`.
