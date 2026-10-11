@@ -572,3 +572,27 @@ Per Thomas's rule the 5 s set was abandoned after 429s and a 15 s set started; i
 **32 KiB cut (design difference):** Harness cuts each tool result at 32 KiB (`MAX_OBS_BYTES`, keeps the start); fx reports a `truncated` flag on its own command output. In Harness H1 the failing test names and failure messages did **not** reach the model (no). This was not caused by the cut: every `run_tests` / `run_shell` call that ran the failing `orders` tests ended in a tool timeout (`cargo test: timeout 120s`, `timeout 30s`, 8 times); only filtered runs of passing tests returned. Its largest results (32809 B) were the 32 KiB-capped reads of `tests/generated.rs` and `data/orders.csv`. Whether the cut hides the failure is not measured by this set.
 
 Finished: fx 1 of 2 (5 s), Harness 0 of 1. With n this small no medians are reported. Run folders: `native/benchmarks/head_to_head/runs/T9-trackB-*-paced{,15}-*` (gitignored).
+
+## Startup and peak memory
+
+**Machine:** box, Linux 6.12.94+, Debian GNU/Linux 13 (trixie), Intel Xeon Processor, 8 vCPU, 16 GB RAM (shared with other work). Harness `0.1.0` at repo `d986eb2` (release binary). fx `v0.0.13` (build revision `4d966e272cfc`, stable channel). Both measured with GNU time 1.9 (`/usr/bin/time`). GNU time prints wall time only to 10 ms (every startup run showed 0:00.00), so startup wall time was taken around each `/usr/bin/time` call with `date +%s%N`. These numbers include the wrapper's fork/exec cost, the same for both. Max RSS is GNU time's `%M`.
+
+**(a) Startup, no model, 10 runs each**
+
+| Command | wall ms min / median / max | max RSS KB (min–max) |
+|---|---|---|
+| `harness version` | 2.8 / 3.1 / 3.8 | 3760–4096 |
+| `fx --version` | 2.1 / 2.4 / 2.5 | 1460 (all runs) |
+| `harness --help` | 2.8 / 3.2 / 3.5 | 3760–4224 |
+| `fx --help` | 2.1 / 2.7 / 2.9 | 1012 (all runs) |
+
+**(b) Peak RSS under load**
+
+- **Harness Track A scripted:** `harness ask --model scripted --script broken_calc_v2 --allow coding,shell --max-steps 24` was run 5 times on fresh `broken_calc_v2` copies, each after a warm `cargo build --tests`. Every run exited 0, and operator `cargo test` passed 5 of 5. Wall time was 0.35 / 0.40 / 0.40 s (min / median / max). Max RSS was 167108 / 168308 / 169372 KB. GNU time's max RSS also counts waited-for child processes, so this is most likely the `cargo test` / rustc child the agent starts, not the Harness process alone.
+- **fx:** v0.0.13 has no offline, fake or scripted model mode in `fx --help` or `fx ask --help`. Measuring fx peak RSS needs live runs. It will be recorded on the next live runs by wrapping `fx ask` in `/usr/bin/time -v`, and Harness will be wrapped the same way in those runs.
+
+**Step-limit difference (uncontrolled in T1 v2 / T7 / T9):**
+- fx v0.0.13 reads its agent step limit from `FX_MAX_AGENT_STEPS`. `fx status` shows `agent_step_limit=0` with the settings used in these runs, because neither the env var nor a settings key was set. With `FX_MAX_AGENT_STEPS=24` it shows `agent_step_limit=24`.
+- Value 0 is read here as "no step limit". That reading is inferred, not documented. It fits T7: fx used 15, 15 and 19 steps and never stopped on a step limit.
+- Harness ran with `--max-steps 24`, and two of its three T7 runs stopped at that cap.
+- To match the two agents in a rerun, set `FX_MAX_AGENT_STEPS=24` for fx and keep Harness `--max-steps 24`. Harness has no unlimited setting, so removing fx's cap is the only option that lines them up.
