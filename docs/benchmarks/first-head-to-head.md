@@ -336,3 +336,23 @@ Same machine (linux-x86_64, 8 vCPU Xeon, 16 GB), model `gemini-3.5-flash` via Ge
 **Observation:** the retry fired as designed (3 per run), but the failure in r3–r5 was a quota 429 with a per-window request limit of 5; a ≤30 s retry budget does not outlast that window. No conclusion about agent quality is drawn from these rows.
 
 **fx setup (no sign-in):** installed via `https://fx.sh/setup.sh` (script sha256 `254c2d44…f924f`), binary sha256 `00def23f…120c`. Uses a custom `openai-chat-completions` connection in `~/.fx/settings.json` pointing at the Gemini OpenAI-compatible base URL with bearer key from an env var, so the same model id is selectable. Ran `fx ask --json --no-save --full-access`.
+
+## Flash-Lite set (same model both agents) — same weak model, free tier
+
+Label: **same weak model, free tier**. This set shows how both agents do on Flash-Lite and nothing more; it says nothing about either agent's coding quality. Not pooled with r1–r5.
+
+Date 2026-10-11 (IST). Harness SHA `2a6168ce486347d051a649a33636af782ebcaa8e`. fx 0.0.13 (/tmp/fxbin). Machine: Linux x86_64, 8 vCPU (box). Model `gemini-3.5-flash-lite` via `https://generativelanguage.googleapis.com/v1beta/openai`, same key, free tier.
+
+| Label | Agent | Run | Success (operator `cargo test` exit) | wall_time_ms | model_retries | retry_wait_ms | agent_wall_ms_excl_retry_wait | model turns | tool calls ok/fail/dup | files read / modified | tokens | stop reason |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| same weak model, free tier | fx | F1 | no (101) | 692 | n/a | n/a | n/a | 0 | 0/0/0 | 0 / 0 | null | fx exited 1 at 0 steps with `error: InvalidChunk`. |
+| same weak model, free tier | Harness | L1 | yes (0) | 10321 | 0 | 0 | 10321 | 13 | 11/1/2 | 3 / 2 | not recorded | Agent stopped after `cargo test` passed (done: Succeeded, 13 steps). |
+| same weak model, free tier | Harness | L2 | yes (0) | 9386 | 0 | 0 | 9386 | 12 | 10/1/2 | 2 / 2 | not recorded | Agent stopped after `cargo test` passed (done: Succeeded, 12 steps). |
+| same weak model, free tier | Harness | L3 | yes (0) | 22459 | 0 | 0 | 22459 | 13 | 11/1/2 | 3 / 2 | not recorded | Agent stopped after `cargo test` passed (done: Succeeded, 13 steps). |
+
+("fail" = tool_result without ok=true.) Finished: Harness 3/3, fx 0/1. Harness finished-run wall time min/median/max: 9386 / 10321 / 22459 ms. fx: no finished runs; F2–F3 not attempted because F1 failed before any model turn.
+
+**fx InvalidChunk cause:** not quota — a direct streaming curl to the same endpoint/model returned HTTP 200 immediately before and after F1, and no 429 occurred in this session. The fx failure happened in 692 ms with 0 steps. Gemini's OpenAI-compatible stream chunks are non-standard: tool_call deltas carry no `index` field and include a provider-specific `extra_content` field, the role is repeated on every chunk, the final chunk has a delta with only `extra_content`, and `usage` appears on every chunk. The cause is most likely fx's chunk parser rejecting this stream shape. fx 0.0.13 `ask` has no documented non-streaming option. fx was not patched.
+
+**Controlled:** model id, endpoint, key/tier, TASK.md prompt (exact fenced text), fresh fixture copy with `target/` removed, no ORACLE.md, 8-min timeout, machine, operator `cargo test` as success check.
+**Uncontrolled:** tool surface (Harness coding+shell vs fx built-in tools), permission mode (Harness `--allow coding,shell` vs fx `--full-access`), system prompts, streaming handling (fx streams; whether streaming succeeds depends on how each client parses the stream), step cap (Harness 24; fx default).
