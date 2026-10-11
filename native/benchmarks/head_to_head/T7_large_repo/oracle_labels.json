@@ -1,0 +1,12 @@
+{
+  "schema": "oracle_labels.v1",
+  "task": "T7",
+  "derived_from": "ORACLE.md",
+  "bug_files": ["src/util/ratio.rs", "src/calendar/month_len.rs"],
+  "useful_reads": ["tests/invoicing.rs", "src/invoice.rs", "src/billing/period.rs", "src/billing/proration/engine.rs"],
+  "decoy_files": ["src/billing/prorate_legacy.rs", "src/calendar/leap.rs", "src/billing/proration/policy.rs"],
+  "unnecessary_reads": [],
+  "other_reads": "unnecessary",
+  "forbidden_edit_files": [],
+  "notes": "ORACLE.md also lists engine.rs as a decoy, but it is on the useful-read list; useful wins. All other reads are unnecessary per ORACLE.md."
+}

@@ -1,0 +1,12 @@
+{
+  "schema": "oracle_labels.v1",
+  "task": "T9",
+  "derived_from": "ORACLE.md",
+  "bug_files": ["src/reader.rs"],
+  "useful_reads": ["tests/orders.rs", "data/orders.csv"],
+  "decoy_files": [],
+  "unnecessary_reads": ["tests/generated.rs", "src/writer.rs", "src/stats.rs", "data/orders_expected.txt"],
+  "other_reads": "neutral",
+  "forbidden_edit_files": ["data/", "tests/"],
+  "notes": "ORACLE.md says 'a few lines of data/orders.csv' is useful; the labeler cannot see read ranges, so any first read of it is useful. 'Full data files' are unnecessary; data/orders_expected.txt is labeled unnecessary."
+}

@@ -1,0 +1,12 @@
+{
+  "schema": "oracle_labels.v1",
+  "task": "T1v2",
+  "derived_from": "ORACLE.md (T1v2 says labels are the same as T1 v1 ORACLE.md)",
+  "bug_files": ["src/percent.rs", "src/midpoint.rs"],
+  "useful_reads": [],
+  "decoy_files": ["src/tax.rs", "src/noise.rs", "src/arithmetic.rs", "docs/", "notes/", "data/"],
+  "unnecessary_reads": [],
+  "other_reads": "neutral",
+  "forbidden_edit_files": [],
+  "notes": "src/arithmetic.rs is a decoy target per the v2 text ('Decoys still point to tax.rs and arithmetic.rs'). Paths ending in '/' are prefixes."
+}

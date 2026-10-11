@@ -8,3 +8,6 @@ fixtures/*/target/
 
 # Phase 4 head-to-head raw runs (keep meta samples if needed)
 benchmarks/head_to_head/runs/
+
+# Labeler output (derived from raw runs; per-run call sequences)
+benchmarks/head_to_head/labels_out/
