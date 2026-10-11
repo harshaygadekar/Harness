@@ -536,23 +536,25 @@ Medians of ok/fail/dup are taken per column. fx steps and Harness model turns me
 **Controlled:** model `gemini-3.5-flash-lite` for both, both through `oai_stream_proxy` (127.0.0.1 only, fresh proxy per run, `--min-interval-ms 5000`, signature add-back, `finish_reason` rewrite, hold file); prompt = only the fenced block of `TASK.md`; fresh fixture copy per run with `target/` deleted; **warm `cargo build --tests` in each copy before the agent started** (exit 0 in all six); 8-minute timeout; same machine.
 **Uncontrolled:** system prompt; tool surface; step cap (Harness `--max-steps 24`, fx default); permission modes (fx `--auto`; Harness `--allow coding,shell`, so shell was on); retry behaviour.
 
-| Run | Agent | cargo test | wall_ms | hold ms | wall − hold | 429s | retries / wait ms | turns/steps | tool calls ok/fail/dup | files read / modified | tokens in / out | largest tool result B | stop |
+| Run | Agent | oracle success | wall_ms | hold ms | wall − hold | 429s | retries / wait ms | turns/steps | tool calls ok/fail/dup | files read / modified | tokens in / out | largest tool result B | stop reason |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| F1 | fx | pass (87) | 113043 | 38777 | 74266 | 0 | n/a | 15 | 14/1/0 | 7 / ratio.rs, month_len.rs | 159406 / 600 | 5308 | exit 0 |
-| H1 | Harness | fail (83) | 120250 | 51568 | 68682 | 0 | 0 / 0 | 24 | 23/1/4 | 6 / month_len.rs | 91514 / 536 | 2332 | MaxSteps |
-| F2 | fx | pass (87) | 86540 | 68271 | 18269 | 0 | n/a | 15 | 14/1/0 | 10 / ratio.rs, month_len.rs | 142766 / 740 | 5308 | exit 0 |
-| H2 | Harness | pass (87) | 115678 | 97516 | 18162 | 0 | 0 / 0 | 24 | 23/1/4 | 6 / ratio.rs, month_len.rs | 80016 / 723 | 2332 | metrics `success` (agent exit 1) |
-| F3 | fx | pass (87) | 110848 | 92254 | 18594 | 0 | n/a | 19 | 17/2/0 | 8 / ratio.rs, month_len.rs | 202485 / 658 | 5308 | exit 0 |
-| H3 | Harness | fail (83) | 118547 | 95373 | 23174 | 0 | 0 / 0 | 24 | 23/1/2 | 9 / month_len.rs | 72329 / 554 | 1540 | MaxSteps |
+| F1 | fx | yes (87 pass) | 113043 | 38777 | 74266 | 0 | n/a | 15 | 14/1/0 | 7 / ratio.rs, month_len.rs | 159406 / 600 | 5308 | exit 0 |
+| H1 | Harness | no (83 pass) | 120250 | 51568 | 68682 | 0 | 0 / 0 | 24 | 23/1/4 | 6 / month_len.rs | 91514 / 536 | 2332 | MaxSteps |
+| F2 | fx | yes (87 pass) | 86540 | 68271 | 18269 | 0 | n/a | 15 | 14/1/0 | 10 / ratio.rs, month_len.rs | 142766 / 740 | 5308 | exit 0 |
+| H2 | Harness | yes (87 pass) | 115678 | 97516 | 18162 | 0 | 0 / 0 | 24 | 23/1/4 | 6 / ratio.rs, month_len.rs | 80016 / 723 | 2332 | MaxSteps (metrics.json says `success`, see note) |
+| F3 | fx | yes (87 pass) | 110848 | 92254 | 18594 | 0 | n/a | 19 | 17/2/0 | 8 / ratio.rs, month_len.rs | 202485 / 658 | 5308 | exit 0 |
+| H3 | Harness | no (83 pass) | 118547 | 95373 | 23174 | 0 | 0 / 0 | 24 | 23/1/2 | 9 / month_len.rs | 72329 / 554 | 1540 | MaxSteps |
 
 fx files read are from its stderr progress lines ("Reading …"); fx dup is not measurable from its JSON. fx largest tool result is the `cargo test` stdout+stderr byte count it reports.
 
-**Oracle check:** fx 3/3 fixed both bugs (`util/ratio.rs`, `calendar/month_len.rs`). Harness H2 fixed both; H1 and H3 fixed only `is_leap` and missed the `scale` bug, stopping at the 24-step cap right after the patch. No run edited a decoy, a test, or any other file.
+**Oracle check:** fx 3/3 fixed both bugs (`util/ratio.rs`, `calendar/month_len.rs`). All 3 Harness runs hit the 24-step cap (`done: MaxSteps`). H2 had already fixed both bugs and its tests pass; H1 and H3 fixed only `is_leap`, missed the `scale` bug, and stopped at the cap right after the patch. No run edited a decoy, a test, or any other file.
 
-| Agent | finished of runs | wall ms min / median / max | wall − hold min / median / max | median turns/steps | median tool calls | median input tokens | median largest tool result B |
+| Agent | finished of runs (oracle success) | wall ms min / median / max | wall − hold min / median / max | median turns/steps | median tool calls | median input tokens | median largest tool result B |
 |---|---|---|---|---|---|---|---|
 | fx | 3 of 3 | 86540 / 110848 / 113043 | 18269 / 18594 / 74266 | 15 | 15 | 159406 | 5308 |
 | Harness | 1 of 3 | 115678 (single finished run) | 18162 (single finished run) | 24 | 24 | 80016 | 2332 |
+
+**metrics.json note:** H2's `metrics.json` reports `exit_status: success` while its run.jsonl ends `done: MaxSteps`. `harness-cli/src/metrics.rs` lines 272–274 set `task_success` to true whenever any `run_tests` call passed, and then overwrite `exit_status` with `success`. So `exit_status` there does not record the stop reason. This table uses the run.jsonl `done` status.
 
 Zero 429s in all six runs. Run folders: `native/benchmarks/head_to_head/runs/T7-trackB-{fx,harness}-paced-*` (gitignored; usage numbers only).
 
@@ -563,7 +565,7 @@ Zero 429s in all six runs. Run folders: `native/benchmarks/head_to_head/runs/T7-
 | Run | Agent | interval | cargo test | wall_ms | hold ms | 429s | retries / wait ms | turns/steps | tool calls ok/fail/dup | files modified | tokens in / out | largest tool result B | stop |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | F1 | fx | 5 s | pass (543) | 79645 | 57979 | 0 | n/a | 12 | 10/2/0 | reader.rs | 238307 / 452 | 431640 raw output (fx marked it truncated); largest file read 81944 | exit 0 |
-| H1 | Harness | 5 s | fail (541) | 466735 | 67779 | 10 | 9 / 40706 | 23 | 14/8/1 | none | 241118 / 450 | 32809 | Failed (429 after tool timeouts) |
+| H1 | Harness | 5 s | fail (541) | 466735 | 67779 | 10 | 9 / 40706 | 23 model requests | 22 tool calls: 14 ok / 8 fail (1 dup, counted within those) | none | 241118 / 450 | 32809 | Failed (429 after tool timeouts) |
 | F2 | fx | 5 s | fail (541) | 818030 | 32765 | 26 | n/a | — | — | none | — | — | timeout (exit 124), 429 loop |
 | F1 | fx | 15 s | not run to end | — | — | 15 of 15 | — | — | — | — | — | — | aborted: daily quota |
 
@@ -594,5 +596,5 @@ Finished: fx 1 of 2 (5 s), Harness 0 of 1. With n this small no medians are repo
 **Step-limit difference (uncontrolled in T1 v2 / T7 / T9):**
 - fx v0.0.13 reads its agent step limit from `FX_MAX_AGENT_STEPS`. `fx status` shows `agent_step_limit=0` with the settings used in these runs, because neither the env var nor a settings key was set. With `FX_MAX_AGENT_STEPS=24` it shows `agent_step_limit=24`.
 - Value 0 is read here as "no step limit". That reading is inferred, not documented. It fits T7: fx used 15, 15 and 19 steps and never stopped on a step limit.
-- Harness ran with `--max-steps 24`, and two of its three T7 runs stopped at that cap.
+- Harness ran with `--max-steps 24`, and all three of its T7 runs stopped at that cap (H2 after already fixing both bugs).
 - To match the two agents in a rerun, set `FX_MAX_AGENT_STEPS=24` for fx and keep Harness `--max-steps 24`. Harness has no unlimited setting, so removing fx's cap is the only option that lines them up.
