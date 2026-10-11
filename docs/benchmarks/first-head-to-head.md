@@ -5,6 +5,8 @@
 **Owners:** Thomas (task/method), Mike (Harness + fx runs), Jessie (gate), Alice (claim language)  
 **Rule:** No “beat fx” claim. No vanity single score. ASD-STE100.
 
+> **T1 v1 vs T1 v2 (note added 2026-10-11).** Every T1 section below that does not say "T1 v2" is **T1 v1 (bugs labeled in source)**. The v1 fixture and its test comments contained BUG and fix-hint comments, a README with the requirements, and notes naming the bug files, so v1 did not really require inspecting code. v1 rows stay valid but are easier, and turn and tool-call numbers may be smaller than on a task with no hints. T1 v2 (`native/fixtures/broken_calc_v2/`, task pack `native/benchmarks/head_to_head/T1v2_broken_calc/`) has the same bugs and test asserts with every fix hint removed; its rows are in their own sections and are not pooled with v1.
+
 ---
 
 ## 1. Objective
@@ -162,7 +164,9 @@ Store complete Harness `run.jsonl` + `metrics.json`. Store fx session log / tran
 
 ## 8. Raw results (fill after runs)
 
-### Track A
+### Track A — T1 v1 (bugs labeled in source)
+
+**T1 v1 (bugs labeled in source).** 
 
 **Machine (shared host for this publish):**  
 `uname -a`: `Linux grok-bot-vm-6854201 6.12.94+ #1 SMP PREEMPT_DYNAMIC Fri Sep 18 16:05:18 UTC 2026 x86_64 GNU/Linux`  
@@ -196,11 +200,36 @@ CPU: Intel(R) Xeon(R) Processor (8 logical CPUs) · RAM: 16397616 kB (~16 GiB) �
 
 **fx columns:** empty / TBD. Do not invent fx numbers. Track A Harness row is **not** a beat-fx claim.
 
+### Track A — T1 v2 (no hints)
+
+Harness only. RUNTIME only, not agent quality, not a comparison with fx (fx has no scripted mode).
+
+| Field | Value |
+|-------|--------|
+| agent | harness |
+| model | `scripted` (`broken_calc_v2_fix_script`, CLI `--script broken_calc_v2` / `calc2`) |
+| harness commit SHA | `e0137666556cf1e32b7504789cf4d4fd02ceb527` |
+| fixture | `native/fixtures/broken_calc_v2/`, content SHA-256 `3180ddf315384f5e66015878ff8a1b6e4e5ebfabb94c6203eff80a5eb014f7b6` |
+| prompt | exact fenced block of `T1v2_broken_calc/TASK.md` |
+| allow | `coding,shell` |
+| n | 1 |
+| success | yes (operator `cargo test` exit 0 on a fresh copy; before the run: exit 101) |
+| wall_time_ms | 352 |
+| model_turns | 8 |
+| tool calls ok/fail/dup | 7 / 0 / 0 |
+| files read / modified | 2 / 2 (`src/percent.rs`, `src/midpoint.rs`) |
+| recorded run | `native/benchmarks/head_to_head/runs/T1v2-broken_calc-trackA-harness-20261011T035835/` (gitignored; folder name timestamp is UTC) |
+| measured_at | 2026-10-11T09:28:35+05:30 (IST) |
+
+The v2 script has the same steps as v1. Only the `apply_patch` anchors changed, because the v2 source has no BUG comments.
+
 ### 8.1 Harness commit for Track A row
 
 Harness commit SHA that contains `broken_calc_fix_script` + `--script` CLI: `14fafacf3e97b36875ff5eab242176ed66f8477d` (docs-fill follow-up may tip HEAD).
 
-### Track B
+### Track B — T1 v1 (bugs labeled in source)
+
+**T1 v1 (bugs labeled in source).** Gemini r1–r5 rows (here and in §13) are T1 v1.
 
 **Label:** Track B = real coding-agent run on Gemini (live model + agent loop). Not Track A. Not a beat-fx claim.
 
@@ -307,7 +336,9 @@ See [`../research/15-phase4-first-bench.md`](../research/15-phase4-first-bench.m
 
 ---
 
-## 13. Track B reruns after adapter retry (2026-10-11)
+## 13. Track B reruns after adapter retry (2026-10-11) — T1 v1 (bugs labeled in source)
+
+**T1 v1 (bugs labeled in source).** 
 
 **Build change:** harness SHA `29d1f583c42cca84e3bf68a4b97028e3a3656157` adds bounded provider retry in `harness-model` OpenAiCompat (outside core): retry on transport error/timeout and HTTP 429/500/502/503/504, max 3 retries, backoff ~2s/4s/8s + jitter, total added wait capped at 30s, Retry-After honored. r3–r5 are **not** the same build as r1/r2 (`e435905` era). `model_retries` is now written to metrics.json and `model_retries.txt`.
 
@@ -337,7 +368,9 @@ Same machine (linux-x86_64, 8 vCPU Xeon, 16 GB), model `gemini-3.5-flash` via Ge
 
 **fx setup (no sign-in):** installed via `https://fx.sh/setup.sh` (script sha256 `254c2d44…f924f`), binary sha256 `00def23f…120c`. Uses a custom `openai-chat-completions` connection in `~/.fx/settings.json` pointing at the Gemini OpenAI-compatible base URL with bearer key from an env var, so the same model id is selectable. Ran `fx ask --json --no-save --full-access`.
 
-## Flash-Lite set (same model both agents) — same weak model, free tier
+## Flash-Lite set (same model both agents) — same weak model, free tier — T1 v1 (bugs labeled in source)
+
+**T1 v1 (bugs labeled in source).** 
 
 Label: **same weak model, free tier**. This set shows how both agents do on Flash-Lite and nothing more; it says nothing about either agent's coding quality. Not pooled with r1–r5.
 
@@ -357,7 +390,11 @@ Date 2026-10-11 (IST). Harness SHA `2a6168ce486347d051a649a33636af782ebcaa8e`. f
 **Controlled:** model id, endpoint, key/tier, TASK.md prompt (exact fenced text), fresh fixture copy with `target/` removed, no ORACLE.md, 8-min timeout, machine, operator `cargo test` as success check.
 **Uncontrolled:** tool surface (Harness coding+shell vs fx built-in tools), permission mode (Harness `--allow coding,shell` vs fx `--full-access`), system prompts, streaming handling (fx streams; whether streaming succeeds depends on how each client parses the stream), step cap (Harness 24; fx default).
 
-## Flash-Lite via stream proxy (same model, same proxy) — same weak model, free tier
+## Flash-Lite via stream proxy (same model, same proxy) — same weak model, free tier — T1 v1 (bugs labeled in source)
+
+**T1 v1 (bugs labeled in source).** 
+
+**Tool-efficiency reading: weak.** The turn and tool-call counts in this set come from T1 v1, where the source named the bugs. They are a weak signal of tool efficiency. No public claim about tool efficiency until T1 v2 has its own row.
 
 Label: **same weak model, free tier**. This set has its own table and is not pooled with r1–r5 or L1–L3. Date 2026-10-11 (IST). Harness binary built at SHA `2a6168c` (harness crates unchanged since). fx 0.0.13 (/tmp/fxbin), not patched. Model `gemini-3.5-flash-lite`, same key, free tier. Proxy at `db0915b` + `37c488f`, reviewed by Jessie. Run order: F1, P1, F2, P2, F3, P3, with 60 s between runs and a fresh proxy process for each run.
 
@@ -381,9 +418,15 @@ Finished: fx 3/3, Harness 3/3. Wall ms min/median/max over finished runs: fx 972
 
 **Permission note (added 2026-10-11):** wherever fx ran `--auto` in this set, Harness ran with `--allow coding,shell`, so shell was on. This set is not a test of the Harness deny-all default.
 
-## Cerebras qwen-3.8-27b (same model, no proxy) — pending Jessie review of token capture
+## Cerebras qwen-3.8-27b (same model, no proxy) — T1 v1 (bugs labeled in source)
 
-Status: **pending Jessie review of token capture** (Harness token fields come from commit `7080c56`). Result: **inconclusive** — fx did not complete any run (0/3), so there is no paired comparison. Rows are measurements only, not pooled with any other set.
+**T1 v1 (bugs labeled in source).** 
+
+Token capture: Harness token fields come from commit `7080c56`, approved by Jessie.
+
+Harness finished T1 v1 3 of 3 times on `qwen-3.8-27b`. fx could not start, because Cerebras rejected its message order.
+
+Result: **inconclusive** — fx did not complete any run (0/3), so there is no paired comparison. Rows are measurements only, not pooled with any other set.
 
 **Controlled:** model `qwen-3.8-27b` for both agents; provider Cerebras, base URL `https://api.cerebras.ai/v1`, direct (no proxy); fixture `broken_calc`, fresh copy per run (ORACLE.md removed); exact fenced TASK.md prompt; 8-minute timeout; 30 s between runs; order C-F1, C-H1, C-F2, C-H2, C-F3, C-H3; same box; success = operator `cargo test` exit 0 on the copy after the run.
 
@@ -396,9 +439,11 @@ Commands: Harness `harness ask --model openai --allow coding,shell --workspace <
 | C-F1 | fx (`--auto`; Harness used `--allow coding,shell`) | fail (unmodified) | 213 | n/a | 0 | 0/0/0 | 0 / 0 | null / null / n/a | HTTP 400 from Cerebras (see below) |
 | C-H1 | Harness (`--allow coding,shell`) | pass | 9949 | 0 / 0 | 6 | 12/0/0 | 6 / 2 (midpoint.rs, percent.rs) | 16722 / 8011 / 6443 | model finished (status success) |
 | C-F2 | fx (`--auto`; Harness used `--allow coding,shell`) | fail (unmodified) | 226 | n/a | 0 | 0/0/0 | 0 / 0 | null / null / n/a | HTTP 400 from Cerebras |
-| C-H2 | Harness (`--allow coding,shell`) | pass | 5513 | 0 / 0 | 6 | 14/0/0 | 6 / 3 (lib.rs, midpoint.rs, percent.rs) | 16304 / 3871 / 2363 | model finished (status success) |
+| C-H2 | Harness (`--allow coding,shell`) | pass | 5513 | 0 / 0 | 6 | 14/0/0 | 6 / 3 (lib.rs, midpoint.rs, percent.rs; lib.rs = comment on line 1 only) | 16304 / 3871 / 2363 | model finished (status success) |
 | C-F3 | fx (`--auto`; Harness used `--allow coding,shell`) | fail (unmodified) | 209 | n/a | 0 | 0/0/0 | 0 / 0 | null / null / n/a | HTTP 400 from Cerebras |
 | C-H3 | Harness (`--allow coding,shell`) | pass | 7157 | 0 / 0 | 7 | 12/0/0 | 6 / 2 (midpoint.rs, percent.rs) | 18307 / 6544 / 5407 | model finished (status success) |
+
+**C-H2 `lib.rs` edit:** per Thomas's oracle check, the `lib.rs` change was only a comment on line 1. It is a cosmetic extra edit, not a quality failure.
 
 fx error (identical all three runs, before any model turn):
 `HTTP 400: {"message":"Failed to apply chat template to messages due to error: System message must be at the beginning.","type":"invalid_request_error","param":"messages","code":"wrong_api_format"}`.
