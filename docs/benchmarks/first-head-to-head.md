@@ -378,3 +378,37 @@ Modified files in every run: `src/midpoint.rs`, `src/percent.rs`. fx files-read 
 Finished: fx 3/3, Harness 3/3. Wall ms min/median/max over finished runs: fx 9723 / 10334 / 10952; Harness 9218 / 10519 / 15190.
 
 **Uncontrolled:** system prompt, tool surface (fx built-in tools vs Harness coding+shell), step cap (Harness `--max-steps 24`; fx default), permission mode. The permission modes are a named difference: Harness ran deny-all with an allow list `--allow coding,shell`. fx ran `--auto` (its default mode: rules apply, then unresolved sensitive calls are auto-reviewed; no rules configured). `--auto` is narrower than the `--full-access` used in earlier sets, and a headless smoke test showed it can write files and run shell commands.
+
+**Permission note (added 2026-10-11):** wherever fx ran `--auto` in this set, Harness ran with `--allow coding,shell`, so shell was on. This set is not a test of the Harness deny-all default.
+
+## Cerebras qwen-3.8-27b (same model, no proxy) — pending Jessie review of token capture
+
+Status: **pending Jessie review of token capture** (Harness token fields come from commit `7080c56`). Result: **inconclusive** — fx did not complete any run (0/3), so there is no paired comparison. Rows are measurements only, not pooled with any other set.
+
+**Controlled:** model `qwen-3.8-27b` for both agents; provider Cerebras, base URL `https://api.cerebras.ai/v1`, direct (no proxy); fixture `broken_calc`, fresh copy per run (ORACLE.md removed); exact fenced TASK.md prompt; 8-minute timeout; 30 s between runs; order C-F1, C-H1, C-F2, C-H2, C-F3, C-H3; same box; success = operator `cargo test` exit 0 on the copy after the run.
+
+**Uncontrolled:** system prompt; tool surface (fx built-in tools vs Harness coding+shell); step cap (Harness `--max-steps 24`, fx default); permission modes — fx `fx ask --json --no-save --auto`; Harness `--allow coding,shell` (shell on; not a test of the Harness deny-all default).
+
+Commands: Harness `harness ask --model openai --allow coding,shell --workspace <copy> --max-steps 24 --record <dir>` (Harness commit `7080c56`, sends `User-Agent: harness/<version>`). fx 0.0.13 with a custom `openai-chat-completions` connection to Cerebras, bearer key from env var; `~/.fx/settings.json` restored from backup afterwards.
+
+| Run | Agent | cargo test | wall_ms | retries / wait ms | turns | tool calls ok/fail/dup | files read / modified | tokens in / out / reasoning | stop reason |
+|---|---|---|---|---|---|---|---|---|---|
+| C-F1 | fx (`--auto`; Harness used `--allow coding,shell`) | fail (unmodified) | 213 | n/a | 0 | 0/0/0 | 0 / 0 | null / null / n/a | HTTP 400 from Cerebras (see below) |
+| C-H1 | Harness (`--allow coding,shell`) | pass | 9949 | 0 / 0 | 6 | 12/0/0 | 6 / 2 (midpoint.rs, percent.rs) | 16722 / 8011 / 6443 | model finished (status success) |
+| C-F2 | fx (`--auto`; Harness used `--allow coding,shell`) | fail (unmodified) | 226 | n/a | 0 | 0/0/0 | 0 / 0 | null / null / n/a | HTTP 400 from Cerebras |
+| C-H2 | Harness (`--allow coding,shell`) | pass | 5513 | 0 / 0 | 6 | 14/0/0 | 6 / 3 (lib.rs, midpoint.rs, percent.rs) | 16304 / 3871 / 2363 | model finished (status success) |
+| C-F3 | fx (`--auto`; Harness used `--allow coding,shell`) | fail (unmodified) | 209 | n/a | 0 | 0/0/0 | 0 / 0 | null / null / n/a | HTTP 400 from Cerebras |
+| C-H3 | Harness (`--allow coding,shell`) | pass | 7157 | 0 / 0 | 7 | 12/0/0 | 6 / 2 (midpoint.rs, percent.rs) | 18307 / 6544 / 5407 | model finished (status success) |
+
+fx error (identical all three runs, before any model turn):
+`HTTP 400: {"message":"Failed to apply chat template to messages due to error: System message must be at the beginning.","type":"invalid_request_error","param":"messages","code":"wrong_api_format"}`.
+This is a request-shape rejection by the Cerebras qwen chat template, not a stream-format problem. Per instructions the fx side was stopped; fx was not patched and no proxy was built.
+
+**Summary over finished runs:**
+
+| Agent | finished / success | wall ms min / median / max | median turns | median tool calls | median input tokens |
+|---|---|---|---|---|---|
+| fx | 0 / 0 of 3 | n/a | n/a | n/a | n/a |
+| Harness | 3 / 3 of 3 | 5513 / 7157 / 9949 | 6 | 12 | 16722 |
+
+Token use for the set: about 51k input / 18k output tokens (Harness only; fx sent no completed requests). Run folders: `native/benchmarks/head_to_head/runs/T1-broken_calc-trackB-{fx,harness}-cerebras-C-*` (gitignored).
