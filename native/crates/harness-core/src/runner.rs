@@ -181,8 +181,10 @@ fn scrub_secrets(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut i = 0;
     'outer: while i < s.len() {
+        // A prefix counts only at a word start, so `task-list` stays as is.
+        let at_start = s[..i].chars().next_back().map_or(true, |p| !is_key(p));
         for pat in PATS {
-            if s[i..].starts_with(pat) {
+            if at_start && s[i..].starts_with(pat) {
                 let mut j = i + pat.len();
                 while let Some(c) = s[j..].chars().next() {
                     if !is_key(c) {
@@ -283,5 +285,12 @@ mod tests {
     fn scrub_does_not_panic_on_multibyte_near_prefix() {
         let out = scrub_secrets("sk-ab\u{e9}\u{e9}\u{e9}\u{e9}\u{e9}\u{e9}");
         assert!(out.starts_with("[REDACTED]"));
+    }
+
+    #[test]
+    fn scrub_keeps_normal_words() {
+        let t = "task-list disk-usage risk-level";
+        assert_eq!(scrub_secrets(t), t);
+        assert_eq!(scrub_secrets("key=sk-abcdef123456"), "key=[REDACTED]");
     }
 }
