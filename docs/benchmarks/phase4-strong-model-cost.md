@@ -82,5 +82,5 @@ Split by task (USD, low / high):
 - T1v2 rows rest on 3 green runs per agent. They are the most reliable.
 - T7 rows rest on 3 runs per agent. Harness T7 is capped by the 24-step limit. Real use can be higher.
 - T9 rows rest on 1 run per agent. Treat them as unknown range. T9 is the largest share of cost.
-- Input tokens are more than 99% of the cost on every model. Output price matters little here.
+- Input tokens are 95% or more of the cost in every row. Output price matters little here.
 - Retries after HTTP 429 or timeouts add cost. They are not in this estimate.
