@@ -27,7 +27,10 @@ Streaming (`text/event-stream`) responses, per `data:` JSON chunk:
 4. **`usage` kept only on the last chunk.** It is removed from every chunk and only the most recent value is kept.
    That value is attached to the chunk that carries a `finish_reason`. If none arrives before `[DONE]`, it is
    emitted as a `{"choices":[],"usage":...}` chunk.
-5. `[DONE]` is passed through. Non-`data:` lines (comments, blank keep-alives) are not forwarded. Each event is
+5. **`finish_reason` `"stop"` changed to `"tool_calls"`** when that choice emitted tool calls in this response. Gemini
+   sends `"stop"`. Without this change fx 0.0.13 fails at 0 steps with `InconsistentFinishReason`. The proxy smoke
+   test found this; it was not in the original spec. Non-stream responses get the same change.
+6. `[DONE]` is passed through. Non-`data:` lines (comments, blank keep-alives) are not forwarded. Each event is
    re-terminated with a blank line.
 
 Non-stream JSON responses get the same `extra_content` removal from `choices[].message.tool_calls[]`.
@@ -39,4 +42,8 @@ Because the proxy strips it from responses, in the default `PROXY_SIG_MODE=reinj
 in-memory map `tool_call id -> extra_content` for the life of the process. Outgoing request messages whose
 `tool_calls[]` entries lack `extra_content` get it re-added by id. Requests that already carry
 `extra_content` are left as they are. `PROXY_SIG_MODE=strip` turns off re-injection. It was used only to test
-whether re-injection is needed (see the bench doc for that result).
+whether re-injection is needed 
+
+**Empirical result (2026-10-11):** with `strip`, the second turn returns HTTP 400 `Function call is missing a
+thought_signature in functionCall parts`. With `reinject`, it returns 200. So signatures must be round-tripped, and
+`reinject` is used for all bench runs for both agents.

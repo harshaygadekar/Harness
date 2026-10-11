@@ -68,6 +68,10 @@ class StreamRewriter:
                         d.pop("tool_calls")
                 if not d and ch.get("finish_reason") is None:
                     continue
+            # 5. finish_reason "stop" after tool calls in this choice -> "tool_calls"
+            if ch.get("finish_reason") == "stop" and ci in self.next:
+                ch["finish_reason"] = "tool_calls"
+                STATS["finish_rewritten"] = STATS.get("finish_rewritten", 0) + 1
             keep.append(ch)
         if "choices" in obj:
             if not keep:
@@ -91,6 +95,8 @@ def rewrite_nonstream(obj):
         ch.pop("extra_content", None)
         m = ch.get("message") or {}
         m.pop("extra_content", None)
+        if m.get("tool_calls") and ch.get("finish_reason") == "stop":
+            ch["finish_reason"] = "tool_calls"
         for i, tc in enumerate(m.get("tool_calls") or []):
             remember(tc)
             tc.pop("extra_content", None)

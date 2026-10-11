@@ -46,6 +46,14 @@ class T(unittest.TestCase):
         proxy.rewrite_request(req)
         self.assertEqual(req["messages"][0]["tool_calls"][0]["extra_content"], SIG)
 
+    def test_finish_reason_stop_after_tools(self):
+        rw = proxy.StreamRewriter()
+        rw.chunk(json.loads(json.dumps(RAW[0])))
+        f = rw.chunk({"choices": [{"delta": {"role": "assistant"}, "finish_reason": "stop", "index": 0}]})
+        self.assertEqual(f["choices"][0]["finish_reason"], "tool_calls")
+        f2 = proxy.StreamRewriter().chunk({"choices": [{"delta": {"content": "hi"}, "finish_reason": "stop", "index": 0}]})
+        self.assertEqual(f2["choices"][0]["finish_reason"], "stop")
+
     def test_nonstream(self):
         o = proxy.rewrite_nonstream({"choices": [{"message": {"tool_calls": [{"id": "z", "extra_content": SIG}]}}]})
         self.assertNotIn("extra_content", json.dumps(o))
