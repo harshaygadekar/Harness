@@ -174,13 +174,30 @@ impl Runner {
 }
 
 fn scrub_secrets(s: &str) -> String {
-    // Minimal scrub: redact AIza / sk- / Bearer-looking tokens.
-    let mut out = s.to_string();
-    for pat in ["AIza", "sk-", "Bearer "] {
-        if let Some(i) = out.find(pat) {
-            let end = (i + 12).min(out.len());
-            out.replace_range(i..end, "[REDACTED]");
+    // Redact the WHOLE key-like token after each known prefix, every time it appears.
+    // Char-safe: never slices inside a multi-byte character.
+    const PATS: [&str; 4] = ["csk-", "AIza", "sk-", "Bearer "];
+    let is_key = |c: char| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.';
+    let mut out = String::with_capacity(s.len());
+    let mut i = 0;
+    'outer: while i < s.len() {
+        for pat in PATS {
+            if s[i..].starts_with(pat) {
+                let mut j = i + pat.len();
+                while let Some(c) = s[j..].chars().next() {
+                    if !is_key(c) {
+                        break;
+                    }
+                    j += c.len_utf8();
+                }
+                out.push_str("[REDACTED]");
+                i = j;
+                continue 'outer;
+            }
         }
+        let c = s[i..].chars().next().unwrap();
+        out.push(c);
+        i += c.len_utf8();
     }
     out
 }
@@ -248,5 +265,23 @@ mod tests {
             e,
             RunEvent::ToolCall { name, .. } if name == "echo"
         )));
+    }
+
+    #[test]
+    fn scrub_hides_whole_key_every_time() {
+        let k = format!("csk-{}", "a1b2c3d4".repeat(6));
+        let g = format!("AIza{}", "Zz9_-".repeat(7));
+        let input = format!("x {k} y {k} z {g} \u{e9}\u{e9}");
+        let out = scrub_secrets(&input);
+        assert!(!out.contains("a1b2"), "{out}");
+        assert!(!out.contains("Zz9"), "{out}");
+        assert_eq!(out.matches("[REDACTED]").count(), 3);
+        assert!(out.ends_with("\u{e9}\u{e9}"));
+    }
+
+    #[test]
+    fn scrub_does_not_panic_on_multibyte_near_prefix() {
+        let out = scrub_secrets("sk-ab\u{e9}\u{e9}\u{e9}\u{e9}\u{e9}\u{e9}");
+        assert!(out.starts_with("[REDACTED]"));
     }
 }
