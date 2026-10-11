@@ -1,0 +1,9 @@
+[package]
+name = "deny_probe"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+
+# Independent package: do not join parent native/ workspace.
+[workspace]
