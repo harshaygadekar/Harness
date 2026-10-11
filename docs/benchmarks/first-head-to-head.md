@@ -356,3 +356,25 @@ Date 2026-10-11 (IST). Harness SHA `2a6168ce486347d051a649a33636af782ebcaa8e`. f
 
 **Controlled:** model id, endpoint, key/tier, TASK.md prompt (exact fenced text), fresh fixture copy with `target/` removed, no ORACLE.md, 8-min timeout, machine, operator `cargo test` as success check.
 **Uncontrolled:** tool surface (Harness coding+shell vs fx built-in tools), permission mode (Harness `--allow coding,shell` vs fx `--full-access`), system prompts, streaming handling (fx streams; whether streaming succeeds depends on how each client parses the stream), step cap (Harness 24; fx default).
+
+## Flash-Lite via stream proxy (same model, same proxy) — same weak model, free tier
+
+Label: **same weak model, free tier**. This set has its own table and is not pooled with r1–r5 or L1–L3. Date 2026-10-11 (IST). Harness binary built at SHA `2a6168c` (harness crates unchanged since). fx 0.0.13 (/tmp/fxbin), not patched. Model `gemini-3.5-flash-lite`, same key, free tier. Proxy at `db0915b` + `37c488f`, reviewed by Jessie. Run order: F1, P1, F2, P2, F3, P3, with 60 s between runs and a fresh proxy process for each run.
+
+**Controlled difference: the stream proxy.** Both agents talked to `http://127.0.0.1:8787` → `generativelanguage.googleapis.com/v1beta/openai` through [`native/benchmarks/tools/oai_stream_proxy`](../../native/benchmarks/tools/oai_stream_proxy/README.md). The README lists every rewrite: tool_call `index` added, `extra_content` stripped, empty-delta chunks dropped, `usage` only on the last chunk, `finish_reason` `stop`→`tool_calls` after tool calls, `[DONE]` passed through.
+**Signature handling (controlled difference):** the proxy keeps Gemini's signature field (`extra_content.google.thought_signature`) in memory, keyed by tool_call id, and adds it back to outgoing requests that lack it. Without that, Gemini returns HTTP 400 on turn 2 (tested with `PROXY_SIG_MODE=strip`). fx needs the re-add. Harness's adapter round-trips that field itself when it receives it, but behind the proxy it never receives it, so Harness requests also rely on the proxy re-adding it. Both agents therefore send identical signature data.
+
+| Label | Agent | Run | Success (operator `cargo test` exit) | wall_ms | retries | retry_wait_ms | model turns / fx steps | tool calls ok/fail/dup | files read / modified | tokens (in/out) | stop reason |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| same weak model, free tier | fx | F1 | yes (0) | 9723 | n/a | n/a | 8 steps, 8 tools | 7/1/2 | 2 read_file calls / 2 | 58591 / 626 | fx exit 0, final answer |
+| same weak model, free tier | Harness | P1 | yes (0) | 9218 | 0 | 0 | 12 | 10/1/2 | 3 / 2 | not recorded | done: Succeeded, 12 steps |
+| same weak model, free tier | fx | F2 | yes (0) | 10334 | n/a | n/a | 9 steps, 9 tools | 8/1/3 | 2 read_file calls / 2 | 64116 / 607 | fx exit 0, final answer |
+| same weak model, free tier | Harness | P2 | yes (0) | 10519 | 0 | 0 | 13 | 11/1/2 | 3 / 2 | not recorded | done: Succeeded, 13 steps |
+| same weak model, free tier | fx | F3 | yes (0) | 10952 | n/a | n/a | 8 steps, 8 tools | 7/1/2 | 2 read_file calls / 2 | 59281 / 868 | fx exit 0, final answer |
+| same weak model, free tier | Harness | P3 | yes (0) | 15190 | 1 (429) | 2496 | 15 | 12/2/3 | 3 / 2 | not recorded | done: Succeeded, 15 steps |
+
+Modified files in every run: `src/midpoint.rs`, `src/percent.rs`. fx files-read paths are not in its JSON output. fx "dup" means identical name+status+command entries in fx's tool list, which is a coarser measure than Harness's. P3's single 429 was retried and the run finished, so it was not a daily-quota stop. P3 wall excluding retry wait: 12694 ms.
+
+Finished: fx 3/3, Harness 3/3. Wall ms min/median/max over finished runs: fx 9723 / 10334 / 10952; Harness 9218 / 10519 / 15190.
+
+**Uncontrolled:** system prompt, tool surface (fx built-in tools vs Harness coding+shell), step cap (Harness `--max-steps 24`; fx default), permission mode. The permission modes are a named difference: Harness ran deny-all with an allow list `--allow coding,shell`. fx ran `--auto` (its default mode: rules apply, then unresolved sensitive calls are auto-reviewed; no rules configured). `--auto` is narrower than the `--full-access` used in earlier sets, and a headless smoke test showed it can write files and run shell commands.
