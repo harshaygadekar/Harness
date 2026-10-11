@@ -489,3 +489,37 @@ wall_ms is operator-measured around the agent process (includes retry waits and 
 | Harness | 2 of 3 | 12747 / 16977 / 21206 | 17 | 16 | 53438 |
 
 Harness median over two finished runs is the mean of the two. The fx and Harness turn counts measure different things (fx steps vs Harness model turns) and are not directly comparable. Run folders: `native/benchmarks/head_to_head/runs/T1v2-broken_calc-trackB-{fx,harness}-proxy-V-*` (gitignored; usage numbers only).
+
+## T1 v2 (no hints): Flash-Lite via proxy, paced 5 s
+
+Label: **same weak model, free tier**. T1 v2 rows only. Own table; not pooled with the unpaced T1 v2 set or any T1 v1 set. Measurements only; no claim about either agent.
+
+Date 2026-10-11, runs 09:45–10:17 IST. Fixture `native/fixtures/broken_calc_v2/`, task pack `native/benchmarks/head_to_head/T1v2_broken_calc/` unchanged. Harness binary as in the previous v2 set (`e013766`; harness crates not touched). fx 0.0.13 (`/tmp/fxbin`, binary sha256 `00def23f…`), not patched; `~/.fx/settings.json` backed up, pointed at the proxy for the runs, and restored afterwards. Order P-F1, P-H1, P-F2, P-H2, P-F3, P-H3, at least 90 s between runs.
+
+**Controlled:** model `gemini-3.5-flash-lite` for both agents; same key, free tier; both agents pointed at the same stream proxy (`127.0.0.1:8787` only, `PROXY_SIG_MODE=reinject`, `finish_reason` rewrite; fresh proxy process per run, so the hold counter starts at zero each run); **pacing: proxy `--min-interval-ms 5000`** (each upstream request held until ≥5 s after the previous upstream request started; same for both agents; neither agent changed); prompt = only the fenced block of the v2 TASK.md; fresh v2 copy per run with `target/` removed and no ORACLE.md or SUCCESS.md; 8-minute timeout; same box; success = operator `cargo test` exit 0 on the copy after the run.
+
+**Uncontrolled:** system prompt; tool surface (fx built-in tools vs Harness coding+shell); step cap (Harness `--max-steps 24`, fx default); permission modes (fx `fx ask --json --no-save --auto --model gemini-3.5-flash-lite`; Harness `--allow coding,shell`). Harness ran with `--allow coding,shell`, so shell was on and this is not a test of deny-all. Retry behaviour differs (Harness reports retries; fx does not), but no 429 reached either agent in this set. The number of model requests per run differs between agents, so total hold time differs too.
+
+| Run | Agent | cargo test | wall_ms | proxy hold ms | wall − hold ms | 429s at proxy | retries / wait ms | upstream requests | turns (Harness) / steps (fx) | tool calls ok/fail/dup | files read / modified | tokens in / out / reasoning | stop reason |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| P-F1 | fx (`--auto`) | pass | 92386 | 64626 | 27760 | 0 | n/a (fx does not report) | 19 | 14 | 12/2/6 | 5 read_file calls / 2 (midpoint.rs, percent.rs) | 164664 / 5439 / n/a | fx exit 0, final answer |
+| P-H1 | Harness (`--allow coding,shell`) | pass | 76112 | 64278 | 11834 | 0 | 0 / 0 | 16 | 16 | 14/1/2 | 6 / 2 (midpoint.rs, percent.rs) | 36012 / 855 / null | done: Succeeded |
+| P-F2 | fx (`--auto`) | pass | 56091 | 45518 | 10573 | 0 | n/a | 12 | 8 | 7/1/2 | 2 read_file calls / 2 (midpoint.rs, percent.rs) | 57656 / 747 / n/a | fx exit 0, final answer |
+| P-H2 | Harness (`--allow coding,shell`) | pass | 65876 | 54851 | 11025 | 0 | 0 / 0 | 14 | 14 | 12/1/2 | 4 / 2 (midpoint.rs, percent.rs) | 28833 / 839 / null | done: Succeeded |
+| P-F3 | fx (`--auto`) | pass | 71059 | 58297 | 12762 | 0 | n/a | 15 | 10 | 8/2/4 | 3 read_file calls / 2 (midpoint.rs, percent.rs) | 75499 / 661 / n/a | fx exit 0, final answer |
+| P-H3 | Harness (`--allow coding,shell`) | pass | 55861 | 46464 | 9397 | 0 | 0 / 0 | 12 | 12 | 10/1/2 | 2 / 2 (midpoint.rs, percent.rs) | 22406 / 579 / null | done: Succeeded |
+
+wall_ms is operator-measured around the agent process and includes proxy hold time; "wall − hold" subtracts the proxy's own hold total (`proxy_hold.json` in each run folder, counts only). fx files-read paths are not in its JSON output. fx "dup" = repeated identical name+status+command entries, a coarser measure than Harness's. No run in this set read `notes/OLD_BUGS.md`.
+
+**Oracle check:** every diff touched only `src/percent.rs` and `src/midpoint.rs`. No run changed a test (no added/removed `assert`, `#[test]` or `mod tests` lines). No decoy edits.
+
+**Harness runs that failed with no 429:** none. All three Harness runs finished with `done: Succeeded` and zero 429s.
+
+**Summary (finished = operator `cargo test` pass):**
+
+| Agent | finished of runs | wall ms min / median / max | wall − hold ms min / median / max | median turns or steps | median tool calls (ok/fail/dup) | median input tokens |
+|---|---|---|---|---|---|---|
+| fx | 3 of 3 | 56091 / 71059 / 92386 | 10573 / 12762 / 27760 | 10 | 10 (8/2/4) | 75499 |
+| Harness | 3 of 3 | 55861 / 65876 / 76112 | 9397 / 11025 / 11834 | 14 | 13 (12/1/2) | 28833 |
+
+Medians of ok/fail/dup are taken per column. fx steps and Harness model turns measure different things and are not directly comparable. Three runs per agent; spread is wide relative to the sample. Run folders: `native/benchmarks/head_to_head/runs/T1v2-broken_calc-trackB-{fx,harness}-paced-P-*` (gitignored; usage numbers only).
