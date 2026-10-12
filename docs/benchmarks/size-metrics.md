@@ -33,6 +33,32 @@ Notes:
 - No lockfile or package manifest is installed. So we cannot count dependencies.
 - We do not guess these values.
 
+## Build and binary details
+
+`file` is not installed on the box. We used `readelf` (binutils) instead.
+
+### Harness
+
+- Toolchain: rustc 1.85.1, target `x86_64-unknown-linux-gnu` (host triple, from `rustc -vV`).
+- Release profile in `native/Cargo.toml`: `opt-level = "z"`, `lto = true`, `codegen-units = 1`, `strip = true`. `panic` is not set, so it is the default (`unwind`).
+- The release binary is an ELF64 x86-64 PIE. It is dynamic: it needs `libc.so.6` and `libgcc_s.so.1`. Its interpreter is `/lib64/ld-linux-x86-64.so.2`. It is stripped (no `.symtab`).
+- The unstripped size comes from the same profile with `CARGO_PROFILE_RELEASE_STRIP=false`.
+
+### fx
+
+- 13,180,752 B is the prebuilt release binary of fx v0.0.13. The official install script downloaded it. We did not build it.
+- Install script URL pattern: `https://releases.fx.sh/<version>/fx-<os>-<arch>.tar.gz`. On this box that is `fx-linux-x86_64.tar.gz`. The script takes `fx` out of the archive and installs it. We measured the binary, not the archive.
+- The binary is an ELF64 x86-64 executable. It is static: it has no dynamic section and no `INTERP` segment. It is stripped (no `.symtab`, 8 section headers).
+
+Commands:
+
+```bash
+rustc -vV
+readelf -h -l -d target/release/harness
+readelf -S target/release/harness | grep symtab
+readelf -h -l -d -S /tmp/fxbin/fx
+```
+
 ## Commands
 
 ```bash
