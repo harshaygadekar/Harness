@@ -140,7 +140,7 @@ class AllowListAndAuthTests(unittest.TestCase):
                 if n:
                     self.rfile.read(n)
                 cls.seen.append((self.command, self.path, self.headers.get("Authorization")))
-                body = b'{"choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop","index":0}]}'
+                body = b'{"choices":[{"message":{"role":"assistant","content":"SECRET_BODY_TEXT"},"finish_reason":"stop","index":0}],"usage":{"prompt_tokens":11,"completion_tokens":3,"total_tokens":14}}'
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(body)))
@@ -153,6 +153,9 @@ class AllowListAndAuthTests(unittest.TestCase):
         cls.old = (proxy.UPSTREAM, proxy.UPSTREAM_KEY)
         proxy.UPSTREAM = "http://127.0.0.1:%d/v1beta/openai" % cls.up.server_address[1]
         proxy.UPSTREAM_KEY = "fake-test-key-123"
+        import tempfile
+        cls.usage_path = tempfile.mktemp(suffix=".jsonl")
+        proxy.USAGE_FILE = cls.usage_path
         cls.px = proxy.make_server(0)
         threading.Thread(target=cls.px.serve_forever, daemon=True).start()
         cls.port = cls.px.server_address[1]
@@ -190,3 +193,30 @@ class AllowListAndAuthTests(unittest.TestCase):
         m, p, a = self.seen[0]
         self.assertEqual((m, p), ("POST", "/v1beta/openai/chat/completions"))
         self.assertEqual(a, "Bearer fake-test-key-123")
+
+
+    def test_usage_log_counts_only(self):
+        import http.client
+        open(self.usage_path, "w").close()
+        body = json.dumps({"model": "m", "messages": [{"role": "user", "content": "BODY_MARKER_7f3a"}]}).encode()
+        c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
+        c.request("POST", "/chat/completions", body=body, headers={
+            "Content-Type": "application/json", "Authorization": "Bearer FAKE_AUTH_MARKER_91c2",
+            "X-Test-Marker": "HEADER_MARKER_c0de"})
+        r = c.getresponse(); r.read(); c.close()
+        self.assertEqual(r.status, 200)
+        self.assertEqual(self.req("GET", "/models"), 404)  # blocked locally: not forwarded, not logged
+        rows = [json.loads(l) for l in open(self.usage_path)]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(set(rows[0]), {"ts_ms", "status", "input_tokens", "output_tokens"})
+        self.assertEqual((rows[0]["status"], rows[0]["input_tokens"], rows[0]["output_tokens"]), (200, 11, 3))
+        raw = open(self.usage_path).read()
+        for bad in ("BODY_MARKER_7f3a", "FAKE_AUTH_MARKER_91c2", "HEADER_MARKER_c0de", "SECRET_BODY_TEXT",
+                    "fake-test-key", "Authorization", "Bearer", "messages"):
+            self.assertNotIn(bad, raw)
+
+    def test_stream_usage_record_takes_final_usage(self):
+        rw = proxy.StreamRewriter()
+        list(proxy.sse_rewrite(lines(), rw))
+        rec = proxy.usage_record(200, rw.last_usage, True)
+        self.assertEqual(set(rec), {"ts_ms", "status", "input_tokens", "output_tokens"})

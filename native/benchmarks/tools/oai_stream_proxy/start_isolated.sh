@@ -9,4 +9,4 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 sudo -n install -d -o benchproxy -g benchproxy -m 755 "$HOLD_DIR"
 exec sudo -n -u benchproxy env -i PATH=/usr/bin:/bin \
   PROXY_KEY_FILE=/home/benchproxy/keys.env PROXY_KEY_NAME="$KEY_NAME" PROXY_SIG_MODE=reinject \
-  python3 "$HERE/proxy.py" "$PORT" --min-interval-ms "$IV" --hold-file "$HOLD_DIR/proxy_hold.json"
+  python3 "$HERE/proxy.py" "$PORT" --min-interval-ms "$IV" --hold-file "$HOLD_DIR/proxy_hold.json" --usage-file "$HOLD_DIR/proxy_usage.jsonl"

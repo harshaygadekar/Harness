@@ -52,12 +52,14 @@ class StreamRewriter:
         self.next = {}     # choice_index -> next index
         self.last = {}     # choice_index -> last assigned index
         self.pending_usage = None
+        self.last_usage = None  # final usage seen in the stream (counts only; for the usage log)
 
     def chunk(self, obj):
         """Return rewritten obj, or None to drop it."""
         usage = obj.pop("usage", None)
         if usage is not None:
             self.pending_usage = usage  # keep only the last one; emitted on final chunk
+            self.last_usage = usage
         obj.pop("extra_content", None)
         keep = []
         for ch in obj.get("choices") or []:
@@ -184,6 +186,33 @@ PACER = Pacer(0)
 HOLD_FILE = None  # optional path; rewritten with PACER.snapshot() after each upstream response
 
 
+USAGE_FILE = None  # optional path; one JSON line per forwarded request, counts only
+_USAGE_LOCK = threading.Lock()
+
+
+def usage_record(status, usage, stream):
+    """Counts-only record: never bodies, headers or keys."""
+    u = usage if isinstance(usage, dict) else {}
+    def num(*names):
+        for n in names:
+            v = u.get(n)
+            if isinstance(v, (int, float)):
+                return int(v)
+        return None
+    return {"ts_ms": int(__import__("time").time() * 1000), "status": int(status),
+            "input_tokens": num("prompt_tokens", "input_tokens"),
+            "output_tokens": num("completion_tokens", "output_tokens")}
+
+
+def log_usage(status, usage, stream):
+    if not USAGE_FILE:
+        return
+    line = json.dumps(usage_record(status, usage, stream)) + "\n"
+    with _USAGE_LOCK:
+        with open(USAGE_FILE, "a") as f:
+            f.write(line)
+
+
 def write_hold_file():
     if HOLD_FILE:
         tmp = HOLD_FILE + ".tmp"
@@ -269,12 +298,22 @@ class H(BaseHTTPRequestHandler):
             self.send_header("Connection", "close")
             self.end_headers()
             rw = StreamRewriter()
-            for out in sse_rewrite(r, rw):
-                self.wfile.write(out)
-                self.wfile.flush()
+            try:
+                for out in sse_rewrite(r, rw):
+                    self.wfile.write(out)
+                    self.wfile.flush()
+            finally:
+                log_usage(r.status, rw.last_usage, True)
             self.close_connection = True
             return
         data = r.read()
+        usage = None
+        if "json" in ctype:
+            try:
+                usage = json.loads(data).get("usage")
+            except (ValueError, AttributeError):
+                usage = None
+        log_usage(r.status, usage, False)
         if r.status == 200 and "json" in ctype:
             try:
                 data = json.dumps(rewrite_nonstream(json.loads(data))).encode()
@@ -326,10 +365,12 @@ if __name__ == "__main__":
     ap.add_argument("--min-interval-ms", type=int, default=0,
                     help="hold each upstream request until this long after the previous one started (0 = off)")
     ap.add_argument("--hold-file", default=None, help="write per-run pacing counts (JSON, counts only) here")
+    ap.add_argument("--usage-file", default=None, help="append one counts-only JSON line per forwarded request")
     a = ap.parse_args()
     port = a.port
     PACER = Pacer(a.min_interval_ms)
     HOLD_FILE = a.hold_file
+    USAGE_FILE = a.usage_file
     kf = os.environ.get("PROXY_KEY_FILE")
     if kf:
         UPSTREAM_KEY = load_key_file(kf, os.environ.get("PROXY_KEY_NAME", "GEMINI_API_KEY"))
