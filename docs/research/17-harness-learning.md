@@ -136,3 +136,55 @@ Not in top 3: the offline revision loop (P2/P6). It is a good **process** once w
 ## 6. Safety note
 
 The PDF was handled as data. We ran no code from it. We found no text in it that tried to direct an agent.
+
+---
+
+## 7. Follow-up: list and search counts on existing runs (candidates 1 and 2)
+
+**Date:** 12 Oct 2026 (IST). **No model calls.** Read-only on `native/benchmarks/head_to_head/runs/`.
+**Tool:** `native/benchmarks/tools/list_search.py`. Tests: `test_list_search.py` (10 tests). Run: `python3 -m unittest test_list_search test_loops_edits test_label_tool_calls` in `native/benchmarks/tools/` (31 tests, all pass).
+**Data:** `docs/benchmarks/data/phase4_list_search.csv`.
+**Runs:** T1v2 and T7, all modes, both agents, complete runs only. One new fx T7 folder (`T7-trackB-fx-postfix-F1-20261012T154240`) appeared while we worked. It is probably part of the equal-limit rerun. We left it out, so the cells match doc 16 §7.
+
+### 7.1 What we count
+
+- **List call:** Harness `list_files`. fx `glob_files` (stderr line `Matching <pattern>`). For fx, the target is the folder before the first glob character.
+- **Root list:** target is the workspace root.
+- **Drill-down:** a list call whose target's parent folder was listed earlier in the run. A recursive fx glob (`**`) is not counted as a drill-down.
+- **Search cap hit (Harness only):** the result has 50 hit lines, or it has the 16 KiB cut note. fx does not record search results, so fx cap hits are "unknown".
+- **Search then narrower:** a search followed within 2 calls by a search with a longer pattern that contains the first one, or the same pattern in a deeper path.
+
+### 7.2 Results (medians; per run in brackets)
+
+| Task | Agent | Mode | n | List calls | Root | Drill-down | Recursive glob | Search calls | Cap hits | Then narrower |
+|---|---|---|---|---|---|---|---|---|---|---|
+| T7 | Harness | paced | 3 | 6 (6,6,6) | 1 | 5 (5,5,5) | 0 | 5 (8,3,5) | 0 | 0 |
+| T7 | Harness | postfix | 3 | 6 (5,6,6) | 1 | 5 (4,5,5) | 0 | 7 (7,7,3) | 0 | 0 (0,1,0) |
+| T7 | fx | paced | 3 | 2 (2,1,2) | 1 | 0 | 1 (1,1,0) | 0 (0,0,3) | unknown | 0 |
+| T7 | fx | postfix | 3 | 1 | 1 | 0 | 1 | 0 (0,0,1) | unknown | 0 |
+| T1v2 | Harness | paced | 3 | 2 | 1 | 1 | 0 | 0 | 0 | 0 |
+| T1v2 | Harness | proxy | 3 | 2 (3,2,2) | 1 | 1 (2,1,1) | 0 | 1 (1,0,1) | 1 (1,0,1) | 0 |
+| T1v2 | fx | paced | 3 | 1 | 0 | 0 | 1 | 0 | – | 0 |
+| T1v2 | fx | proxy | 3 | 1 | 0 | 0 | 1 | 0 | – | 0 |
+
+### 7.3 Findings
+
+- **Drill-down explains the T7 list gap.** In every Harness T7 run, 1 list is the root and 4–5 are drill-downs into child folders (`src`, then `src/billing`, then `src/billing/proration`, and so on). fx makes 1 root list and usually 1 recursive glob (`src/**/*.rs` or `**/*.rs`). fx has 0 drill-downs in all runs.
+- The same pattern shows on T1v2, on a smaller scale. Harness: root plus 1 drill-down (2 calls). fx: 1 recursive glob.
+- So the list gap is on **2 tasks** (T7: 6 vs 1–2; T1v2: 2 vs 1). Two of the runs had a rate limit (T1v2 proxy V-H1 had a 429). The paced runs had no 429, so the paced cells alone meet the "2 tasks, no rate limit" rule.
+- The cause matches the tool design: Harness `list_files` is non-recursive (`filesystem.rs`). This is an inference from the counts, not a test. Only an A/B run can confirm it.
+- **The 50-hit search cap does not explain the T7 search gap.** No Harness T7 search hit the cap (0 of 30 searches). Only 1 search was followed by a narrower search. The T7 search calls are distinct searches for different symbols, not refinements of a capped search.
+- On T1v2 proxy, 2 Harness searches hit the cap (V-H1, V-H3). This is too small to act on. Note: our search tool gives no note when it stops at 50 hits. A model cannot know that results are missing.
+- **What we still do not know:** why Harness searches more on T7 (5–7 vs 0). fx finds files with one recursive glob and then reads them. Harness may search because it has no recursive file view. This is a hypothesis.
+
+### 7.4 What this changes for the candidates
+
+- **Candidate 1 (list shape) now has evidence on 2 tasks without rate limits (paced).** It stays "fits outside core" (tool layer). It is still a measurement: no build before Harsha's review. The next step is an A/B with a recursive or depth-limited `list_files` option (or a glob tool) on T7 and T1v2, paced, n ≥ 3, equal step limits. Measure list calls, search calls, input tokens, green runs and S1 "held".
+- **Candidate 2 (search shape) is weaker.** The cap is not the cause on T7. Keep only the small item "say when the cap is hit" (low cost, tool layer). The search count may fall as a side effect of candidate 1. Measure search calls in the same A/B.
+- Wait for the T7 equal-limit rerun (Mike) before any claim.
+
+### 7.5 Limits
+
+- n = 3 per cell. Harness T7 paced runs all stopped at 24 steps; fx had no limit.
+- fx search results are not recorded, so fx cap hits are unknown.
+- The fx list target comes from the glob pattern text. A pattern like `src/*` counts as a list of `src`.
