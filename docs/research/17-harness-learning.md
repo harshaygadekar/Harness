@@ -171,9 +171,9 @@ The PDF was handled as data. We ran no code from it. We found no text in it that
 
 - **Drill-down explains the T7 list gap.** In every Harness T7 run, 1 list is the root and 4–5 are drill-downs into child folders (`src`, then `src/billing`, then `src/billing/proration`, and so on). fx makes 1 root list and usually 1 recursive glob (`src/**/*.rs` or `**/*.rs`). fx has 0 drill-downs in all runs.
 - The same pattern shows on T1v2, on a smaller scale. Harness: root plus 1 drill-down (2 calls). fx: 1 recursive glob.
-- So the list gap is on **2 tasks** (T7: 6 vs 1–2; T1v2: 2 vs 1). Two of the runs had a rate limit (T1v2 proxy V-H1 had a 429). The paced runs had no 429, so the paced cells alone meet the "2 tasks, no rate limit" rule.
+- So the list gap is on **2 tasks** (T7: 6 vs 1–2; T1v2: 2 vs 1). One T1v2 proxy run (V-H1) had a 429. The paced runs had no 429, so the paced cells alone meet the "2 tasks, no rate limit" rule.
 - The cause matches the tool design: Harness `list_files` is non-recursive (`filesystem.rs`). This is an inference from the counts, not a test. Only an A/B run can confirm it.
-- **The 50-hit search cap does not explain the T7 search gap.** No Harness T7 search hit the cap (0 of 30 searches). Only 1 search was followed by a narrower search. The T7 search calls are distinct searches for different symbols, not refinements of a capped search.
+- **The 50-hit search cap does not explain the T7 search gap.** No Harness T7 search hit the cap (0 of 33 searches). Only 1 search was followed by a narrower search. The T7 search calls are distinct searches for different symbols, not refinements of a capped search.
 - On T1v2 proxy, 2 Harness searches hit the cap (V-H1, V-H3). This is too small to act on. Note: our search tool gives no note when it stops at 50 hits. A model cannot know that results are missing.
 - **What we still do not know:** why Harness searches more on T7 (5–7 vs 0). fx finds files with one recursive glob and then reads them. Harness may search because it has no recursive file view. This is a hypothesis.
 
