@@ -16,7 +16,7 @@ TS=$(date +%Y%m%dT%H%M%S); D=$RUNS/$T-trackB-$A-$TAG-$L-$TS; mkdir -p "$D"
 P=$(mktemp -d /tmp/iso-$T-$A-$L-XXXX); W=$P/ws; cp -r "$NATIVE/fixtures/$FIX" "$W"; rm -rf "$W/target"
 echo "S1 marker $TS" > "$P/MARKER.txt"; MSHA=$(sha256sum "$P/MARKER.txt" | cut -c1-64)
 (cd "$W" && git init -q && printf 'target/\n' >.git/info/exclude && git add -A && git -c user.email=b@b -c user.name=b commit -qm base)
-sudo -n chown -R "$AU" "$P"; chmod 755 "$P"
+chmod 755 "$P"; sudo -n chown -R "$AU" "$P"
 AENV=(PATH=/usr/local/bin:/usr/bin:/bin HOME=/home/$AU LANG=C.UTF-8 HARNESS_BASE_URL=http://127.0.0.1:8787 HARNESS_MODEL=gemini-3.5-flash-lite HARNESS_API_KEY=proxy-injected FX_MAX_AGENT_STEPS=$CAP)
 asagent() { sudo -n -u "$AU" env -i "${AENV[@]}" "$@"; }
 (cd "$W" && asagent cargo build --tests -q >/dev/null 2>&1; echo $? > "$D/warm_build_exit")
@@ -39,6 +39,9 @@ if [ ! -f "$PIN/proxy.py" ]; then
 fi
 PROXY_BLOB=$(sha256sum "$PIN/proxy.py" | cut -c1-64)
 git -C "$HERE" diff --quiet HEAD -- "$NATIVE/benchmarks/tools/oai_stream_proxy" "$HERE/run_isolated.sh" || echo "WARN: proxy/runner differ from $PROXY_SHA in worktree; pinned committed copy used" > "$D/proxy_pin_warning.txt"
+RUN_ID=$(basename "$D")
+sudo -n install -d -o root -g root -m 755 /opt/benchproxy/run
+printf '%s\n' "$RUN_ID" | sudo -n tee /opt/benchproxy/run/current_run_id.tmp >/dev/null && sudo -n chmod 644 /opt/benchproxy/run/current_run_id.tmp && sudo -n mv -f /opt/benchproxy/run/current_run_id.tmp /opt/benchproxy/run/current_run_id
 HD=/tmp/benchproxy-$TS-$L; sudo -n "$PIN/start_isolated.sh" 8787 "$IV" "$HD" 2>"$D/proxy.log" & sleep 1.5
 # Exactly one proxy.py process, as benchproxy, from the pinned path; else abort before the agent starts.
 "$HERE/verify_proxy_proc.sh" "$PIN/proxy.py" > "$D/proxy_proc_check.json"; PROC_OK=$?
@@ -72,6 +75,7 @@ python3 - "$D" <<'P'
 import json,sys,os
 D=sys.argv[1]; p=os.path.join(D,"run_env.json"); e=json.load(open(p))
 rows=[json.loads(l) for l in open(os.path.join(D,"proxy_usage.jsonl")) if l.strip()]
+e["run_id"]=os.path.basename(D.rstrip("/")); e["proxy_run_ids"]=sorted(set(str(r.get("run_id")) for r in rows)); e["proxy_run_id_match"]=all(r.get("run_id")==e["run_id"] for r in rows)
 e["proxy_requests"]=len(rows); e["proxy_status_counts"]={}
 for r in rows: e["proxy_status_counts"][str(r["status"])]=e["proxy_status_counts"].get(str(r["status"]),0)+1
 e["proxy_input_tokens"]=sum(r.get("input_tokens") or 0 for r in rows); e["proxy_output_tokens"]=sum(r.get("output_tokens") or 0 for r in rows)
@@ -80,5 +84,5 @@ json.dump(e,open(p,"w"),indent=1)
 P
 ls -A "$P" | grep -vE '^(time.txt|rec)$' > "$D/parent_ls.txt"; echo "$MSHA $(sha256sum "$P/MARKER.txt" | cut -c1-64)" > "$D/marker_sha.txt"
 [ -n "${SUMMARIZER:-}" ] && python3 "$SUMMARIZER" "$D" "$T" "$A" >/dev/null
-rm -rf "$P" "$HD" 2>/dev/null; sudo -n rm -rf "$P" "$HD" 2>/dev/null
+printf 'none\n' | sudo -n tee /opt/benchproxy/run/current_run_id >/dev/null; rm -rf "$P" "$HD" 2>/dev/null; sudo -n rm -rf "$P" "$HD" 2>/dev/null
 echo "$D"

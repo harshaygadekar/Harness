@@ -187,6 +187,18 @@ HOLD_FILE = None  # optional path; rewritten with PACER.snapshot() after each up
 
 
 USAGE_FILE = None  # optional path; one JSON line per forwarded request, counts only
+# Run ID comes ONLY from this operator-owned file (root-owned, not writable by the agent user),
+# re-read on every request. Never from request headers or body.
+RUN_ID_FILE = "/opt/benchproxy/run/current_run_id"
+
+
+def current_run_id():
+    try:
+        with open(RUN_ID_FILE) as f:
+            v = f.read(200).strip()
+        return v if v and all(c.isalnum() or c in "-_.:" for c in v) else "invalid"
+    except OSError:
+        return None
 _USAGE_LOCK = threading.Lock()
 
 
@@ -199,7 +211,7 @@ def usage_record(status, usage, stream):
             if isinstance(v, (int, float)):
                 return int(v)
         return None
-    return {"ts_ms": int(__import__("time").time() * 1000), "status": int(status),
+    return {"ts_ms": int(__import__("time").time() * 1000), "run_id": current_run_id(), "status": int(status),
             "input_tokens": num("prompt_tokens", "input_tokens"),
             "output_tokens": num("completion_tokens", "output_tokens")}
 
@@ -371,6 +383,7 @@ if __name__ == "__main__":
     PACER = Pacer(a.min_interval_ms)
     HOLD_FILE = a.hold_file
     USAGE_FILE = a.usage_file
+    RUN_ID_FILE = os.environ.get("PROXY_RUN_ID_FILE", RUN_ID_FILE)
     kf = os.environ.get("PROXY_KEY_FILE")
     if kf:
         UPSTREAM_KEY = load_key_file(kf, os.environ.get("PROXY_KEY_NAME", "GEMINI_API_KEY"))

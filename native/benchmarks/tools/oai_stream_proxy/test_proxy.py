@@ -156,6 +156,9 @@ class AllowListAndAuthTests(unittest.TestCase):
         import tempfile
         cls.usage_path = tempfile.mktemp(suffix=".jsonl")
         proxy.USAGE_FILE = cls.usage_path
+        cls.runid_path = tempfile.mktemp()
+        open(cls.runid_path, "w").write("T7-run-A\n")
+        proxy.RUN_ID_FILE = cls.runid_path
         cls.px = proxy.make_server(0)
         threading.Thread(target=cls.px.serve_forever, daemon=True).start()
         cls.port = cls.px.server_address[1]
@@ -202,21 +205,36 @@ class AllowListAndAuthTests(unittest.TestCase):
         c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
         c.request("POST", "/chat/completions", body=body, headers={
             "Content-Type": "application/json", "Authorization": "Bearer FAKE_AUTH_MARKER_91c2",
-            "X-Test-Marker": "HEADER_MARKER_c0de"})
+            "X-Test-Marker": "HEADER_MARKER_c0de", "X-Run-Id": "client-run-B"})
         r = c.getresponse(); r.read(); c.close()
         self.assertEqual(r.status, 200)
         self.assertEqual(self.req("GET", "/models"), 404)  # blocked locally: not forwarded, not logged
         rows = [json.loads(l) for l in open(self.usage_path)]
         self.assertEqual(len(rows), 1)
-        self.assertEqual(set(rows[0]), {"ts_ms", "status", "input_tokens", "output_tokens"})
+        self.assertEqual(set(rows[0]), {"ts_ms", "run_id", "status", "input_tokens", "output_tokens"})
+        self.assertEqual(rows[0]["run_id"], "T7-run-A")  # from the operator file, not X-Run-Id
         self.assertEqual((rows[0]["status"], rows[0]["input_tokens"], rows[0]["output_tokens"]), (200, 11, 3))
         raw = open(self.usage_path).read()
         for bad in ("BODY_MARKER_7f3a", "FAKE_AUTH_MARKER_91c2", "HEADER_MARKER_c0de", "SECRET_BODY_TEXT",
-                    "fake-test-key", "Authorization", "Bearer", "messages"):
+                    "fake-test-key", "Authorization", "Bearer", "messages", "client-run-B"):
             self.assertNotIn(bad, raw)
 
     def test_stream_usage_record_takes_final_usage(self):
         rw = proxy.StreamRewriter()
         list(proxy.sse_rewrite(lines(), rw))
         rec = proxy.usage_record(200, rw.last_usage, True)
-        self.assertEqual(set(rec), {"ts_ms", "status", "input_tokens", "output_tokens"})
+        self.assertEqual(set(rec), {"ts_ms", "run_id", "status", "input_tokens", "output_tokens"})
+
+
+    def test_run_id_file_reread_and_header_ignored(self):
+        import http.client
+        open(self.usage_path, "w").close()
+        body = json.dumps({"model": "m", "messages": []}).encode()
+        for rid in ("T7-run-A", "T7-run-C"):
+            open(self.runid_path, "w").write(rid)
+            c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
+            c.request("POST", "/chat/completions", body=body, headers={"Content-Type": "application/json", "X-Run-Id": "client-run-B"})
+            c.getresponse().read(); c.close()
+        rows = [json.loads(l) for l in open(self.usage_path)]
+        self.assertEqual([r["run_id"] for r in rows], ["T7-run-A", "T7-run-C"])
+        open(self.runid_path, "w").write("T7-run-A\n")
