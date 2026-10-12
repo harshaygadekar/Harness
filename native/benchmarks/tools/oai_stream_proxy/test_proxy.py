@@ -106,3 +106,17 @@ class Pacing(unittest.TestCase):
         p.reset()
         self.assertEqual(p.snapshot()["upstream_requests"], 0)
         self.assertEqual(p.wait(), 0.0)  # reset clears last start too
+
+
+class KeyFileTests(__import__("unittest").TestCase):
+    def test_load_key_file_reads_named_key(self):
+        import tempfile, os
+        import proxy
+        with tempfile.NamedTemporaryFile("w", delete=False) as f:
+            f.write("OTHER=x\nGEMINI_API_KEY=test-not-a-real-key\n")
+        try:
+            self.assertEqual(proxy.load_key_file(f.name, "GEMINI_API_KEY"), "test-not-a-real-key")
+            with self.assertRaises(SystemExit):
+                proxy.load_key_file(f.name, "MISSING_KEY")
+        finally:
+            os.unlink(f.name)

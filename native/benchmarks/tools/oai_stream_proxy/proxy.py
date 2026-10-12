@@ -12,6 +12,24 @@ UPSTREAM = os.environ.get("PROXY_UPSTREAM", "https://generativelanguage.googleap
 # "strip" strips and never re-adds (used only to test whether signatures are required).
 SIG_MODE = os.environ.get("PROXY_SIG_MODE", "reinject")
 
+# Upstream key injection (key isolation): when PROXY_KEY_FILE is set, the proxy reads
+# KEY_NAME=value from that file (owned by the proxy user, mode 600) and sends its own
+# Authorization header; any client Authorization header is dropped. The key lives only
+# in this process's memory, never in its environment, logs or responses.
+UPSTREAM_KEY = None
+
+
+def load_key_file(path, name):
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if line.startswith(name + "="):
+                v = line.split("=", 1)[1].strip().strip('"').strip("'")
+                if v:
+                    return v
+    raise SystemExit(f"key {name} not found in key file")
+
+
 _SIGS = {}
 _LOCK = threading.Lock()
 STATS = {"sigs_stored": 0, "sigs_reinjected": 0, "chunks_dropped": 0, "indices_added": 0}
@@ -176,6 +194,18 @@ def write_hold_file():
 class H(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
+    def do_GET(self):
+        # Cheap local health check; never contacts upstream.
+        if self.path.rstrip("/") == "/healthz":
+            body = json.dumps({"ok": True, "key_injection": UPSTREAM_KEY is not None}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        else:
+            self._fwd()
+
     def log_message(self, *a):  # never log headers; minimal path-only log
         pass
 
@@ -191,7 +221,9 @@ class H(BaseHTTPRequestHandler):
         path = self.path if not self.path.startswith(u.path) else self.path[len(u.path):]
         conn = http.client.HTTPSConnection(u.hostname, u.port or 443, timeout=300)
         hdrs = {"Content-Type": self.headers.get("Content-Type", "application/json"), "Accept-Encoding": "identity"}
-        if self.headers.get("Authorization"):
+        if UPSTREAM_KEY is not None:
+            hdrs["Authorization"] = "Bearer " + UPSTREAM_KEY
+        elif self.headers.get("Authorization"):
             hdrs["Authorization"] = self.headers["Authorization"]
         if self.headers.get("Accept"):
             hdrs["Accept"] = self.headers["Accept"]
@@ -226,7 +258,7 @@ class H(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    do_POST = do_GET = _fwd
+    do_POST = _fwd
 
 
 def sse_rewrite(lines, rw):
@@ -271,6 +303,9 @@ if __name__ == "__main__":
     port = a.port
     PACER = Pacer(a.min_interval_ms)
     HOLD_FILE = a.hold_file
+    kf = os.environ.get("PROXY_KEY_FILE")
+    if kf:
+        UPSTREAM_KEY = load_key_file(kf, os.environ.get("PROXY_KEY_NAME", "GEMINI_API_KEY"))
     write_hold_file()
     srv = make_server(port)
     sys.stderr.write(f"oai_stream_proxy on 127.0.0.1:{port} sig_mode={SIG_MODE} min_interval_ms={a.min_interval_ms}\n")
