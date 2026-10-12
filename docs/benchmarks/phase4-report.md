@@ -26,6 +26,23 @@ The data supports gate result F at most, on one task, one weak model and one pro
 
 ---
 
+## What we can and cannot claim
+
+All results below are labelled **weak model (Gemini Flash-Lite) through the proxy**.
+
+We can claim:
+
+- Size: harness-core is 488 lines of code, about 2% of the binary. Harness's binary is 3.6 MB, against 13.2 MB for the fx v0.0.13 prebuilt release binary.
+- Tokens: results go both ways. On T1 v2 and T7, Harness used fewer input tokens (28.8K against 75.5K, and 71K against 132K). On T9, Harness used more (714K against 483K). There is no general token-efficiency claim.
+
+We cannot claim:
+
+- The 2.6x token line: it is withdrawn. A split of fixed overhead and context growth is in progress.
+- T7: the 24-step limit still decides the result. All 3 Harness runs stopped at step 24. The 50-step run is on hold until the keys are moved.
+- Any security result for rows with shell on: the model-free tests found 22 escapes in 38 cases. S1 "held" only because Harness had no shell. The fx S1 row is "escaped in auto mode (the v0.0.13 default)". Its ask mode was not tested.
+
+---
+
 ## 2. What we measured
 
 ### 2.1 Tasks
@@ -81,6 +98,7 @@ Each item gives the numbers, the task and model, and the confidence. "n" is runs
 - **Confidence:** n = 3 per agent per set, 1 task, 1 model, 1 provider through our proxy. Low.
 - **Allowed claim (Alice):** "On T1 v2 with `gemini-3.5-flash-lite` and equal pacing, both agents solved it 3 of 3 times. Harness used a median of 28.8K input tokens and fx used 75.5K, on this one task. Harness took more turns, and wall time minus pacing was close."
 - **Not allowed:** "faster", "uses less context" in general, "beats fx".
+- **Withdrawn:** the 2.6x fewer-tokens line. See [What we can and cannot claim](#what-we-can-and-cannot-claim).
 - **What we do not know:** we have no fx per-call token breakdown. So we cannot say why the gap exists (prompt size, tool schema size, tool output size or history).
 - **Condition to upgrade this signal (team input, Thomas):** the token gap counts as a strength only if it holds on T7. On T7 the 32 KiB output cut is unlikely to matter. On T9 a gap is partly a design choice (the cut), not agent skill.
 
