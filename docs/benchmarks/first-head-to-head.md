@@ -670,3 +670,29 @@ harness: oracle success 2 of 2; wall min/median/max 319087 / 332540 / 345994 ms;
 - **T9 at 5 s:** every Harness run ended `Failed` on a 429 after 3 retries (about 15–16 s of retry wait). fx kept retrying and passed. Following the pacing rule, the set was repeated at 15 s for both agents.
 - **T9 at 15 s:** no 429s. fx passed 3 of 3; Harness passed 2 of 2 finished runs (H1 stopped at MaxSteps after its tests already passed). In every post-fix Harness T9 run the failing `orders` test names reached the model, and no test tool timed out.
 - **T9 input tokens (15 s):** fx median 483,488; Harness median 714,267.
+
+## T7 rerun, 50-step cap for both agents (isolated)
+
+Label: **weak model (Gemini Flash-Lite) via proxy.** gemini-3.5-flash-lite, 5 s pacing, `FX_MAX_AGENT_STEPS=50` for fx, max turns 50 for Harness. Harness binary 92b84dc (not rebuilt). fx v0.0.13 (`fx ask --json --no-save --auto`). Both agents ran as `benchagent` under `env -i`. Upstream key injected by the pinned proxy, running as `benchproxy`. Proxy and runner pinned at chore/key-isolation 09bd397. Run date 2026-10-12, 22:35–23:07 IST.
+
+Pre-run checks on every run: ps check (one proxy, user benchproxy, pinned path) OK. key_isolation_check OVERALL PASS. proxy run_id matched the folder on every usage line. All 6 runs have proxy counts.
+
+| run | oracle success | stop reason | wall ms | model req (self) | tool calls | self in/out tok | proxy req | proxy in/out tok | steps to first edit | list/search/read | peak RSS KB |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| F1 | yes | exit 0 | 91535 | n/a | 15 | 156553 / 677 | 19 | 167928 / 768 | 12 | 2/0/8 | 176172 |
+| F2 | yes | exit 0 | 149045 | n/a | 14 | 143905 / 653 | 17 | 150285 / 685 | 12 | 2/0/8 | 174216 |
+| F3 | yes | exit 0 | 105900 | n/a | 18 | 187653 / 653 | 22 | 198547 / 735 | 14 | 2/2/9 | 174684 |
+| H1 | yes | Succeeded | 413083 | 33 | 32 | 124130 / 946 | 33 | 124130 / 946 | 26 | 6/8/11 | 173452 |
+| H2 | yes | Succeeded | 292080 | 39 | 38 | 195680 / 1061 | 42 | 195680 / 1061 | 32 | 6/13/12 | 172960 |
+| H3 | yes | Succeeded | 295945 | 20 | 19 | 59152 / 701 | 20 | 59152 / 701 | 15 | 5/3/5 | 172852 |
+
+Summary: oracle success fx 3/3 and Harness 3/3. No run hit the 50 cap. Median wall time is 105.9 s for fx and 295.9 s for Harness. There were no 429s.
+
+Notes:
+- fx's proxy totals run above its self-reported totals: 2–4 extra requests per run, and +4–7% input tokens. These are most likely auto-mode review requests that fx leaves out of its own usage.
+- For Harness, proxy tokens equal self-reported tokens. H2 had 42 proxy requests against 39 self-reported: 3 upstream 503s were retried, and those carried no usage.
+- fx does not report a per-tool largest result, so that column is left out. Harness largest tool results were 1540, 3449 and 2332 bytes.
+- Two earlier F1 attempts were aborted by setup bugs before any model call (0 proxy requests). Both are marked ABORTED.txt: 170012 (temp-dir chmod order) and 170132 (fx refused 664 settings perms; fixed in 09bd397).
+- This is one task with 3 runs per agent on a weak model. It does not support a claim that either agent is better.
+
+Folders: `native/benchmarks/head_to_head/runs/T7-trackB-{fx,harness}-isolated-cap50-*-20261012T17*`.
