@@ -21,12 +21,13 @@ AENV=(PATH=/usr/local/bin:/usr/bin:/bin HOME=/home/$AU LANG=C.UTF-8 HARNESS_BASE
 asagent() { sudo -n -u "$AU" env -i "${AENV[@]}" "$@"; }
 (cd "$W" && asagent cargo build --tests -q >/dev/null 2>&1; echo $? > "$D/warm_build_exit")
 # fx config for the agent user: base_url -> proxy; auth env -> HARNESS_API_KEY (dummy). No key in it.
-sudo -n -u "$AU" mkdir -p /home/$AU/.fx
+sudo -n -u "$AU" mkdir -p /home/$AU/.fx; sudo -n -u "$AU" chmod 700 /home/$AU/.fx
 python3 - "$HOME/.fx/settings.json" <<'P' | sudo -n -u "$AU" tee /home/$AU/.fx/settings.json >/dev/null
 import json,sys;s=json.load(open(sys.argv[1]))
 s['providers']['gemini']['base_url']='http://127.0.0.1:8787'; s['providers']['gemini']['auth']={'type':'bearer','env':'HARNESS_API_KEY'}
 print(json.dumps(s))
 P
+sudo -n -u "$AU" chmod 600 /home/$AU/.fx/settings.json  # fx refuses group/world-writable private state
 sudo -n pkill -KILL -u benchproxy -f "proxy.py 8787" 2>/dev/null; sleep 0.5
 # Pin the proxy: export proxy.py + start_isolated.sh at this script's commit into a root-owned dir.
 PROXY_SHA=$(git -C "$HERE" rev-parse HEAD)
