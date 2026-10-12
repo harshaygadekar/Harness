@@ -17,6 +17,7 @@ SIG_MODE = os.environ.get("PROXY_SIG_MODE", "reinject")
 # Authorization header; any client Authorization header is dropped. The key lives only
 # in this process's memory, never in its environment, logs or responses.
 UPSTREAM_KEY = None
+ALLOWED_POST_PATHS = {"/chat/completions"}
 
 
 def load_key_file(path, name):
@@ -194,9 +195,33 @@ def write_hold_file():
 class H(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
+    def _not_found(self):
+        n = int(self.headers.get("Content-Length") or 0)
+        if n:
+            self.rfile.read(n)
+        body = b'{"error":"not found"}'
+        self.send_response(404)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+        sys.stderr.write(f"{self.command} (blocked path) -> 404\n")
+
+    def do_POST(self):
+        # Allow-list: only the chat-completions call the agents make reaches upstream.
+        if self.path.split("?")[0].rstrip("/") in ALLOWED_POST_PATHS:
+            self._fwd()
+        else:
+            self._not_found()
+
+    def do_PUT(self):
+        self._not_found()
+
+    do_DELETE = do_PATCH = do_HEAD = do_OPTIONS = do_PUT
+
     def do_GET(self):
-        # Cheap local health check; never contacts upstream.
-        if self.path.rstrip("/") == "/healthz":
+        # Cheap local health check; never contacts upstream. Every other GET is 404.
+        if self.path.split("?")[0].rstrip("/") == "/healthz":
             body = json.dumps({"ok": True, "key_injection": UPSTREAM_KEY is not None}).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -204,7 +229,7 @@ class H(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
         else:
-            self._fwd()
+            self._not_found()
 
     def log_message(self, *a):  # never log headers; minimal path-only log
         pass
@@ -219,7 +244,10 @@ class H(BaseHTTPRequestHandler):
                 pass
         u = urllib.parse.urlsplit(UPSTREAM)
         path = self.path if not self.path.startswith(u.path) else self.path[len(u.path):]
-        conn = http.client.HTTPSConnection(u.hostname, u.port or 443, timeout=300)
+        if u.scheme == "http":  # tests only (local mock upstream)
+            conn = http.client.HTTPConnection(u.hostname, u.port or 80, timeout=300)
+        else:
+            conn = http.client.HTTPSConnection(u.hostname, u.port or 443, timeout=300)
         hdrs = {"Content-Type": self.headers.get("Content-Type", "application/json"), "Accept-Encoding": "identity"}
         if UPSTREAM_KEY is not None:
             hdrs["Authorization"] = "Bearer " + UPSTREAM_KEY
@@ -258,7 +286,6 @@ class H(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    do_POST = _fwd
 
 
 def sse_rewrite(lines, rw):

@@ -120,3 +120,73 @@ class KeyFileTests(__import__("unittest").TestCase):
                 proxy.load_key_file(f.name, "MISSING_KEY")
         finally:
             os.unlink(f.name)
+
+
+class AllowListAndAuthTests(unittest.TestCase):
+    """Local mock upstream; no network, fake key only."""
+
+    @classmethod
+    def setUpClass(cls):
+        import threading
+        from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
+        cls.seen = []
+
+        class Up(BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+            def log_message(self, *a):
+                pass
+            def _any(self):
+                n = int(self.headers.get("Content-Length") or 0)
+                if n:
+                    self.rfile.read(n)
+                cls.seen.append((self.command, self.path, self.headers.get("Authorization")))
+                body = b'{"choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop","index":0}]}'
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            do_GET = do_POST = do_PUT = do_DELETE = _any
+
+        cls.up = ThreadingHTTPServer(("127.0.0.1", 0), Up)
+        threading.Thread(target=cls.up.serve_forever, daemon=True).start()
+        cls.old = (proxy.UPSTREAM, proxy.UPSTREAM_KEY)
+        proxy.UPSTREAM = "http://127.0.0.1:%d/v1beta/openai" % cls.up.server_address[1]
+        proxy.UPSTREAM_KEY = "fake-test-key-123"
+        cls.px = proxy.make_server(0)
+        threading.Thread(target=cls.px.serve_forever, daemon=True).start()
+        cls.port = cls.px.server_address[1]
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.px.shutdown(); cls.up.shutdown()
+        proxy.UPSTREAM, proxy.UPSTREAM_KEY = cls.old
+
+    def req(self, method, path, body=None, auth=None):
+        import http.client
+        c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
+        h = {"Content-Type": "application/json"}
+        if auth:
+            h["Authorization"] = auth
+        c.request(method, path, body=body, headers=h)
+        r = c.getresponse(); r.read(); c.close()
+        return r.status
+
+    def test_other_paths_404_without_upstream_call(self):
+        self.seen.clear()
+        for m, p in [("GET", "/models"), ("GET", "/v1beta/models"), ("POST", "/embeddings"),
+                     ("POST", "/chat/completions/../models"), ("PUT", "/chat/completions"),
+                     ("DELETE", "/chat/completions"), ("GET", "/chat/completions")]:
+            self.assertEqual(self.req(m, p, body=b"{}" if m != "GET" else None), 404, (m, p))
+        self.assertEqual(self.seen, [])
+        self.assertEqual(self.req("GET", "/healthz"), 200)
+        self.assertEqual(self.seen, [])
+
+    def test_client_auth_never_reaches_upstream(self):
+        self.seen.clear()
+        body = json.dumps({"model": "m", "messages": [{"role": "user", "content": "hi"}]}).encode()
+        self.assertEqual(self.req("POST", "/chat/completions", body=body, auth="Bearer client-secret-should-not-pass"), 200)
+        self.assertEqual(len(self.seen), 1)
+        m, p, a = self.seen[0]
+        self.assertEqual((m, p), ("POST", "/v1beta/openai/chat/completions"))
+        self.assertEqual(a, "Bearer fake-test-key-123")
