@@ -18,7 +18,7 @@ Provider SDKs stay **out of core**. Each adapter is a plugin that implements the
 - **Tests/CI** — fake `ModelClient` is the default; no provider SDK required.
 - Adapters do not ship a `finish` tool or shell.
 
-See [ADR-002](decisions/ADR-002-model-adapter.md) (Proposed).
+See [ADR-002](decisions/ADR-002-model-adapter.md) (Accepted).
 
 ## Plugins
 

@@ -1,88 +1,38 @@
 # Harness
 
-Minimal **agentic harness** (Python): a small core loop, tool protocol, deny-all gate, and plugins.
-
-**Core stays thin. Everything else is a plugin.**
-
-Design inspiration: [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) / Cordis paper — seams and tool gate only. We did **not** vendor Cordis or `dsh`.
+Harness is a native coding agent in Rust. The core is tiny. The tool gate is deny-all by default. A tool runs only when you allow it.
 
 Repo: https://github.com/harshaygadekar/Harness
 
+## Crate layout
+
+The Rust workspace is in `native/`.
+
+| Crate | Purpose |
+|---|---|
+| `harness-core` | Core loop, events, tool protocol, allow-list gate. No HTTP. |
+| `harness-tools` | Coding tools (workspace, files, processes). |
+| `harness-model` | Model adapters (OpenAI-compatible, scripted model for CI). |
+| `harness-cli` | The `harness` binary. |
+
+## Build and test
+
+```bash
+cd native
+cargo build --release      # binary: target/release/harness
+cargo test --workspace
+```
+
+Model keys come from the environment. Never commit `.env` or keys.
+
 ## Status
 
-ADR-001 **Accepted**. Spike + tests green. Stdlib-only core.
-
-## Install
-
-```bash
-git clone https://github.com/harshaygadekar/Harness.git
-cd Harness
-python -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-pytest
-python examples/echo_demo.py
-```
-
-Optional Gemini adapter (plugin, not core):
-
-```bash
-pip install -e ".[gemini]"
-cp .env.example .env
-# put GEMINI_API_KEY in .env — never commit .env, never paste keys in chat
-python examples/gemini_echo.py
-```
-
-
-## CLI (ADR-004)
-
-```bash
-pip install -e .
-agentic-harness version
-agentic-harness run \
-  --workspace examples/coding_agent/workspace_sample \
-  --allow-coding-pack \
-  --prompt "List files and read notes.txt"
-```
-
-Defaults: **deny-all** tools. Shell only with `--enable-shell`. Not an OS sandbox. See `docs/cli.md`.
-
-## First demo (must work)
-
-One model adapter + one user-supplied tool + `Runner.run`.
-
-Host **must allowlist tools by name**. Default policy denies every tool call.
-
-No shell. No `python_eval`. No MCP. No multi-agent. No server in core.
-
-## Non-goals (core)
-
-Graphs, crews, MCP runtime, Docker/sandbox, RAG, memory OS, observability SaaS, built-in shell/browser tools. Those are plugins if we ever need them.
-
-
-## Native track (ADR-005)
-
-Separate Rust product under `native/`. Python core stays frozen.
-
-```bash
-cd native && cargo build --release -p harness-cli
-./target/release/harness version
-./target/release/harness run --prompt "hi"              # deny-all
-./target/release/harness run --prompt "hi" --allow echo
-```
-
-No beat-fx claim until native benches land. See `native/README.md`.
+- Benchmarks against fx are in progress. We make no win claims yet.
+- Size metrics: [docs/benchmarks/size-metrics.md](docs/benchmarks/size-metrics.md).
+- The Python spike (`src/`, `tests/`) is frozen (ADR-004). New work goes into the Rust workspace.
 
 ## Docs
 
-- `docs/useful-scope.md` — product lock
-- `docs/decisions/ADR-001-core-loop.md` — core loop
-- `docs/research/` — research pack (incl. DeepSeek Harness note)
-- `CONTRIBUTING.md` — branch / PR workflow
-- `SECURITY.md` — keys, gate, scrub rules
-- `docs/plugin-authoring.md` — write a plugin
-- `docs/useful-scope-phase2.md` — Phase 2 coding-agent lock
-
-## Contribute
-
-See `CONTRIBUTING.md`. Branch from `main`, open a PR. Do not commit secrets.
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- [docs/decisions/](docs/decisions/) (ADRs)
+- [SECURITY.md](SECURITY.md)
