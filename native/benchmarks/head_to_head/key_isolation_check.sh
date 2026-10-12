@@ -15,7 +15,7 @@ res() { if [ "$2" = PASS ]; then echo "PASS  $1  ($3)"; else echo "FAIL  $1  ($3
 
 [ "$AU" != benchproxy ] || { echo "FAIL  agent user must not be benchproxy"; exit 1; }
 sudo -n install -d -o "$AU" -m 755 "$WS"
-PP=$(pgrep -u benchproxy -f oai_stream_proxy/proxy.py | head -1)
+PP=$(pgrep -u benchproxy -f "proxy.py" | head -1)
 
 # 1. key file by absolute path
 if as_agent "cat '$KEYFILE'" >/dev/null 2>&1; then res "cat key file" FAIL "readable"; else

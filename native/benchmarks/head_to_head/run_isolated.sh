@@ -27,10 +27,22 @@ import json,sys;s=json.load(open(sys.argv[1]))
 s['providers']['gemini']['base_url']='http://127.0.0.1:8787'; s['providers']['gemini']['auth']={'type':'bearer','env':'HARNESS_API_KEY'}
 print(json.dumps(s))
 P
-pkill -KILL -u benchproxy -f "proxy.py 8787" 2>/dev/null; sleep 0.5
-HD=/tmp/benchproxy-$TS-$L; "$NATIVE/benchmarks/tools/oai_stream_proxy/start_isolated.sh" 8787 "$IV" "$HD" 2>"$D/proxy.log" & sleep 1.5
+sudo -n pkill -KILL -u benchproxy -f "proxy.py 8787" 2>/dev/null; sleep 0.5
+# Pin the proxy: export proxy.py + start_isolated.sh at this script's commit into a root-owned dir.
+PROXY_SHA=$(git -C "$HERE" rev-parse HEAD)
+REL=native/benchmarks/tools/oai_stream_proxy
+PIN=/opt/benchproxy/$PROXY_SHA
+if [ ! -f "$PIN/proxy.py" ]; then
+  TMPX=$(mktemp -d); git -C "$HERE" show "$PROXY_SHA:$REL/proxy.py" > "$TMPX/proxy.py"; git -C "$HERE" show "$PROXY_SHA:$REL/start_isolated.sh" > "$TMPX/start_isolated.sh"
+  sudo -n install -d -o root -g root -m 755 /opt/benchproxy "$PIN"
+  sudo -n install -o root -g root -m 644 "$TMPX/proxy.py" "$PIN/proxy.py"; sudo -n install -o root -g root -m 755 "$TMPX/start_isolated.sh" "$PIN/start_isolated.sh"; rm -rf "$TMPX"
+fi
+PROXY_BLOB=$(sha256sum "$PIN/proxy.py" | cut -c1-64)
+git -C "$HERE" diff --quiet HEAD -- "$NATIVE/benchmarks/tools/oai_stream_proxy" "$HERE/run_isolated.sh" || echo "WARN: proxy/runner differ from $PROXY_SHA in worktree; pinned committed copy used" > "$D/proxy_pin_warning.txt"
+HD=/tmp/benchproxy-$TS-$L; sudo -n "$PIN/start_isolated.sh" 8787 "$IV" "$HD" 2>"$D/proxy.log" & sleep 1.5
 "$HERE/key_isolation_check.sh" "$AU" "$W" "$(cd "$NATIVE/.." && pwd)" > "$D/key_isolation_check.txt" 2>&1
-if ! grep -q "OVERALL PASS" "$D/key_isolation_check.txt"; then echo "key isolation check failed; run not started" > "$D/ABORTED.txt"; pkill -KILL -u benchproxy -f "proxy.py 8787"; exit 3; fi
+if ! grep -q "OVERALL PASS" "$D/key_isolation_check.txt"; then echo "key isolation check failed; run not started" > "$D/ABORTED.txt"; sudo -n pkill -KILL -u benchproxy -f "proxy.py 8787"; exit 3; fi
+PROXY_PID=$(pgrep -u benchproxy -f "proxy.py 8787" | head -1); PROXY_UID=$(ps -o uid= -p "$PROXY_PID" 2>/dev/null | tr -d ' ')
 S=$(date +%s%3N)
 if [ $A = fx ]; then
   MODE="--auto"; [ $T = S1 ] && MODE=""
@@ -42,7 +54,13 @@ else
   timeout -k 10 480 sudo -n -u "$AU" env -i "${AENV[@]}" /usr/bin/time -v -o "$P/time.txt" "$HB" ask --model openai --allow "$ALLOW" --workspace "$W" --max-steps "$CAP" --record "$P/rec" --prompt "$PROMPT" </dev/null >"$D/stdout.txt" 2>"$D/stderr.txt"; echo $? > "$D/agent_exit"
 fi
 E=$(date +%s%3N); echo $((E-S)) > "$D/wall_ms"
-pkill -KILL -u "$AU" -f "$P/" 2>/dev/null; pkill -TERM -u benchproxy -f "proxy.py 8787"; sleep 1; pkill -KILL -u benchproxy -f "proxy.py 8787" 2>/dev/null
+python3 - "$D/run_env.json" "$AU" "$(id -u "$AU")" "$PROXY_SHA" "$PROXY_BLOB" "$PROXY_UID" "${AENV[@]}" <<'P'
+import json,sys
+out,user,uid,psha,pblob,puid=sys.argv[1:7]; env=sys.argv[7:]
+json.dump({"run_user":user,"run_uid":int(uid),"proxy_sha":psha,"proxy_py_sha256":pblob,"proxy_user":"benchproxy","proxy_uid":int(puid) if puid.isdigit() else None,
+  "agent_env_vars":sorted(e.split("=",1)[0] for e in env),"env_mode":"env -i"},open(out,"w"),indent=1)
+P
+sudo -n pkill -KILL -u "$AU" -f "$P/" 2>/dev/null; sudo -n pkill -TERM -u benchproxy -f "proxy.py 8787"; sleep 1; sudo -n pkill -KILL -u benchproxy -f "proxy.py 8787" 2>/dev/null
 cp "$HD/proxy_hold.json" "$D/" 2>/dev/null; sudo -n cp -r "$P/rec" "$D/rec" 2>/dev/null; sudo -n cp "$P/time.txt" "$D/" 2>/dev/null; sudo -n chown -R "$(id -u)" "$D" "$P"
 (cd "$W" && cargo test > "$D/cargo_test.txt" 2>&1; echo $? > "$D/cargo_exit"; git add -A; git diff --cached HEAD > "$D/final.diff"; git diff --cached --name-only HEAD > "$D/files_modified.txt")
 python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['harness_sha'])" "$D/rec/metrics.json" > "$D/harness_sha.txt" 2>/dev/null \
