@@ -14,8 +14,9 @@ Brief note; full core decision is [ADR-001](decisions/ADR-001-core-loop.md). Rep
 
 Provider SDKs stay **out of core**. Each adapter is a plugin that implements the `ModelClient` protocol (`complete(messages, tools) → ModelResponse`).
 
-- **Gemini** — plugin under the gemini extra; reads `GEMINI_API_KEY` / `GOOGLE_API_KEY` from env; default model `gemini-flash-latest`; 503 retries/backoff only in the plugin; never log the key; sanitize errors (Jessie `AIza` / `AQ.` patterns).
-- **Tests/CI** — fake `ModelClient` is the default; no provider SDK required.
+- **OpenAI-compatible** — `OpenAiCompat` in the Rust crate `harness-model` (`native/crates/harness-model`). It reads `HARNESS_API_KEY` (or `OPENAI_API_KEY`), `HARNESS_MODEL` (required) and `HARNESS_BASE_URL` (optional) from env. Gemini runs through its OpenAI-compatible endpoint. Retries with backoff on 429/5xx live in the adapter, not in core. The key is redacted in debug output, and HTTP error bodies are scrubbed.
+- **Scripted** — `ScriptedModel` in `harness-model` plays a fixed list of responses for CI and replay.
+- **Tests/CI** — use the scripted model. No network or key needed.
 - Adapters do not ship a `finish` tool or shell.
 
 See [ADR-002](decisions/ADR-002-model-adapter.md) (Accepted).
