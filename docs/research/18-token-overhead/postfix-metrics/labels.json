@@ -1,0 +1,437 @@
+{
+ "rows": [
+  {
+   "task": "T7",
+   "agent": "fx",
+   "mode": "plain",
+   "n": 3,
+   "n_green": 3,
+   "total_calls_median": 14,
+   "total_calls_min": 13,
+   "total_calls_max": 14,
+   "useful_median": 10,
+   "useful_min": 10,
+   "useful_max": 10,
+   "unnecessary_median": 0,
+   "unnecessary_min": 0,
+   "unnecessary_max": 1,
+   "neutral_median": 3,
+   "neutral_min": 3,
+   "neutral_max": 4,
+   "failed_median": 0,
+   "failed_min": 0,
+   "failed_max": 0,
+   "decoy_reads_median": 1,
+   "decoy_reads_min": 1,
+   "decoy_reads_max": 1,
+   "useful_rate_median": 0.714,
+   "useful_rate_min": 0.714,
+   "useful_rate_max": 0.769
+  },
+  {
+   "task": "T7",
+   "agent": "harness",
+   "mode": "plain",
+   "n": 3,
+   "n_green": 2,
+   "total_calls_median": 24,
+   "total_calls_min": 24,
+   "total_calls_max": 24,
+   "useful_median": 9,
+   "useful_min": 7,
+   "useful_max": 10,
+   "unnecessary_median": 3,
+   "unnecessary_min": 2,
+   "unnecessary_max": 3,
+   "neutral_median": 13,
+   "neutral_min": 11,
+   "neutral_max": 13,
+   "failed_median": 0,
+   "failed_min": 0,
+   "failed_max": 1,
+   "decoy_reads_median": 1,
+   "decoy_reads_min": 0,
+   "decoy_reads_max": 2,
+   "useful_rate_median": 0.375,
+   "useful_rate_min": 0.292,
+   "useful_rate_max": 0.417
+  },
+  {
+   "task": "T9",
+   "agent": "fx",
+   "mode": "plain",
+   "n": 6,
+   "n_green": 6,
+   "total_calls_median": 17.5,
+   "total_calls_min": 16,
+   "total_calls_max": 20,
+   "useful_median": 6.0,
+   "useful_min": 5,
+   "useful_max": 6,
+   "unnecessary_median": 5.5,
+   "unnecessary_min": 5,
+   "unnecessary_max": 6,
+   "neutral_median": 6.0,
+   "neutral_min": 5,
+   "neutral_max": 8,
+   "failed_median": 0.0,
+   "failed_min": 0,
+   "failed_max": 1,
+   "decoy_reads_median": 0.0,
+   "decoy_reads_min": 0,
+   "decoy_reads_max": 0,
+   "useful_rate_median": 0.343,
+   "useful_rate_min": 0.25,
+   "useful_rate_max": 0.375
+  },
+  {
+   "task": "T9",
+   "agent": "harness",
+   "mode": "plain",
+   "n": 5,
+   "n_green": 2,
+   "total_calls_median": 20,
+   "total_calls_min": 16,
+   "total_calls_max": 24,
+   "useful_median": 4,
+   "useful_min": 3,
+   "useful_max": 6,
+   "unnecessary_median": 5,
+   "unnecessary_min": 4,
+   "unnecessary_max": 6,
+   "neutral_median": 11,
+   "neutral_min": 8,
+   "neutral_max": 12,
+   "failed_median": 0,
+   "failed_min": 0,
+   "failed_max": 0,
+   "decoy_reads_median": 0,
+   "decoy_reads_min": 0,
+   "decoy_reads_max": 0,
+   "useful_rate_median": 0.25,
+   "useful_rate_min": 0.158,
+   "useful_rate_max": 0.286
+  }
+ ],
+ "skipped": [
+  {
+   "run": "S1-trackB-fx-postfix-F1-20261012T004653",
+   "reason": "cannot infer task pack from folder name"
+  },
+  {
+   "run": "S1-trackB-fx-postfix-F2-20261012T005216",
+   "reason": "cannot infer task pack from folder name"
+  },
+  {
+   "run": "S1-trackB-fx-postfix-F3-20261012T010556",
+   "reason": "cannot infer task pack from folder name"
+  },
+  {
+   "run": "S1-trackB-harness-postfix-H1-20261012T004927",
+   "reason": "cannot infer task pack from folder name"
+  },
+  {
+   "run": "S1-trackB-harness-postfix-H2-20261012T010302",
+   "reason": "cannot infer task pack from folder name"
+  },
+  {
+   "run": "S1-trackB-harness-postfix-H3-20261012T010844",
+   "reason": "cannot infer task pack from folder name"
+  },
+  {
+   "run": "T9-trackB-harness-postfix15-H3-20261012T164259",
+   "reason": "unknown run format (no rec/run.jsonl and no fx stdout.txt)"
+  }
+ ],
+ "runs": [
+  {
+   "run": "T7-trackB-fx-postfix-F1-20261012T001701",
+   "task": "T7",
+   "agent": "fx",
+   "mode": "plain",
+   "green": true,
+   "total_calls": 14,
+   "counts": {
+    "useful": 10,
+    "unnecessary": 1,
+    "neutral": 3,
+    "failed": 0
+   },
+   "useful_rate": 0.7142857142857143,
+   "decoy_reads": 1,
+   "largest_tool_result_bytes": 5308
+  },
+  {
+   "run": "T7-trackB-fx-postfix-F2-20261012T002330",
+   "task": "T7",
+   "agent": "fx",
+   "mode": "plain",
+   "green": true,
+   "total_calls": 13,
+   "counts": {
+    "useful": 10,
+    "unnecessary": 0,
+    "neutral": 3,
+    "failed": 0
+   },
+   "useful_rate": 0.7692307692307693,
+   "decoy_reads": 1,
+   "largest_tool_result_bytes": 5308
+  },
+  {
+   "run": "T7-trackB-fx-postfix-F3-20261012T002954",
+   "task": "T7",
+   "agent": "fx",
+   "mode": "plain",
+   "green": true,
+   "total_calls": 14,
+   "counts": {
+    "useful": 10,
+    "unnecessary": 0,
+    "neutral": 4,
+    "failed": 0
+   },
+   "useful_rate": 0.7142857142857143,
+   "decoy_reads": 1,
+   "largest_tool_result_bytes": 5308
+  },
+  {
+   "run": "T7-trackB-harness-postfix-H1-20261012T002001",
+   "task": "T7",
+   "agent": "harness",
+   "mode": "plain",
+   "green": true,
+   "total_calls": 24,
+   "counts": {
+    "useful": 9,
+    "unnecessary": 2,
+    "neutral": 13,
+    "failed": 0
+   },
+   "useful_rate": 0.375,
+   "decoy_reads": 0,
+   "largest_tool_result_bytes": 2332
+  },
+  {
+   "run": "T7-trackB-harness-postfix-H2-20261012T002625",
+   "task": "T7",
+   "agent": "harness",
+   "mode": "plain",
+   "green": false,
+   "total_calls": 24,
+   "counts": {
+    "useful": 7,
+    "unnecessary": 3,
+    "neutral": 13,
+    "failed": 1
+   },
+   "useful_rate": 0.2916666666666667,
+   "decoy_reads": 2,
+   "largest_tool_result_bytes": 1540
+  },
+  {
+   "run": "T7-trackB-harness-postfix-H3-20261012T003927",
+   "task": "T7",
+   "agent": "harness",
+   "mode": "plain",
+   "green": true,
+   "total_calls": 24,
+   "counts": {
+    "useful": 10,
+    "unnecessary": 3,
+    "neutral": 11,
+    "failed": 0
+   },
+   "useful_rate": 0.4166666666666667,
+   "decoy_reads": 1,
+   "largest_tool_result_bytes": 1540
+  },
+  {
+   "run": "T9-trackB-fx-postfix-F1-20261012T154554",
+   "task": "T9",
+   "agent": "fx",
+   "mode": "plain",
+   "green": true,
+   "total_calls": 18,
+   "counts": {
+    "useful": 6,
+    "unnecessary": 6,
+    "neutral": 6,
+    "failed": 0
+   },
+   "useful_rate": 0.3333333333333333,
+   "decoy_reads": 0,
+   "largest_tool_result_bytes": 431640
+  },
+  {
+   "run": "T9-trackB-fx-postfix-F2-20261012T155258",
+   "task": "T9",
+   "agent": "fx",
+   "mode": "plain",
+   "green": true,
+   "total_calls": 20,
+   "counts": {
+    "useful": 5,
+    "unnecessary": 6,
+    "neutral": 8,
+    "failed": 1
+   },
+   "useful_rate": 0.25,
+   "decoy_reads": 0,
+   "largest_tool_result_bytes": 431640
+  },
+  {
+   "run": "T9-trackB-fx-postfix-F3-20261012T160054",
+   "task": "T9",
+   "agent": "fx",
+   "mode": "plain",
+   "green": true,
+   "total_calls": 16,
+   "counts": {
+    "useful": 6,
+    "unnecessary": 5,
+    "neutral": 5,
+    "failed": 0
+   },
+   "useful_rate": 0.375,
+   "decoy_reads": 0,
+   "largest_tool_result_bytes": 431640
+  },
+  {
+   "run": "T9-trackB-fx-postfix15-F1-20261012T160734",
+   "task": "T9",
+   "agent": "fx",
+   "mode": "plain",
+   "green": true,
+   "total_calls": 17,
+   "counts": {
+    "useful": 6,
+    "unnecessary": 6,
+    "neutral": 5,
+    "failed": 0
+   },
+   "useful_rate": 0.35294117647058826,
+   "decoy_reads": 0,
+   "largest_tool_result_bytes": 431640
+  },
+  {
+   "run": "T9-trackB-fx-postfix15-F2-20261012T162150",
+   "task": "T9",
+   "agent": "fx",
+   "mode": "plain",
+   "green": true,
+   "total_calls": 17,
+   "counts": {
+    "useful": 6,
+    "unnecessary": 5,
+    "neutral": 6,
+    "failed": 0
+   },
+   "useful_rate": 0.35294117647058826,
+   "decoy_reads": 0,
+   "largest_tool_result_bytes": 431640
+  },
+  {
+   "run": "T9-trackB-fx-postfix15-F3-20261012T163537",
+   "task": "T9",
+   "agent": "fx",
+   "mode": "plain",
+   "green": true,
+   "total_calls": 18,
+   "counts": {
+    "useful": 6,
+    "unnecessary": 5,
+    "neutral": 7,
+    "failed": 0
+   },
+   "useful_rate": 0.3333333333333333,
+   "decoy_reads": 0,
+   "largest_tool_result_bytes": 431640
+  },
+  {
+   "run": "T9-trackB-harness-postfix-H1-20261012T154937",
+   "task": "T9",
+   "agent": "harness",
+   "mode": "plain",
+   "green": false,
+   "total_calls": 16,
+   "counts": {
+    "useful": 4,
+    "unnecessary": 4,
+    "neutral": 8,
+    "failed": 0
+   },
+   "useful_rate": 0.25,
+   "decoy_reads": 0,
+   "largest_tool_result_bytes": 32809
+  },
+  {
+   "run": "T9-trackB-harness-postfix-H2-20261012T155723",
+   "task": "T9",
+   "agent": "harness",
+   "mode": "plain",
+   "green": false,
+   "total_calls": 19,
+   "counts": {
+    "useful": 3,
+    "unnecessary": 5,
+    "neutral": 11,
+    "failed": 0
+   },
+   "useful_rate": 0.15789473684210525,
+   "decoy_reads": 0,
+   "largest_tool_result_bytes": 32809
+  },
+  {
+   "run": "T9-trackB-harness-postfix-H3-20261012T160430",
+   "task": "T9",
+   "agent": "harness",
+   "mode": "plain",
+   "green": false,
+   "total_calls": 20,
+   "counts": {
+    "useful": 4,
+    "unnecessary": 5,
+    "neutral": 11,
+    "failed": 0
+   },
+   "useful_rate": 0.2,
+   "decoy_reads": 0,
+   "largest_tool_result_bytes": 32808
+  },
+  {
+   "run": "T9-trackB-harness-postfix15-H1-20261012T161427",
+   "task": "T9",
+   "agent": "harness",
+   "mode": "plain",
+   "green": true,
+   "total_calls": 24,
+   "counts": {
+    "useful": 6,
+    "unnecessary": 6,
+    "neutral": 12,
+    "failed": 0
+   },
+   "useful_rate": 0.25,
+   "decoy_reads": 0,
+   "largest_tool_result_bytes": 32809
+  },
+  {
+   "run": "T9-trackB-harness-postfix15-H2-20261012T162842",
+   "task": "T9",
+   "agent": "harness",
+   "mode": "plain",
+   "green": true,
+   "total_calls": 21,
+   "counts": {
+    "useful": 6,
+    "unnecessary": 4,
+    "neutral": 11,
+    "failed": 0
+   },
+   "useful_rate": 0.2857142857142857,
+   "decoy_reads": 0,
+   "largest_tool_result_bytes": 32809
+  }
+ ]
+}
