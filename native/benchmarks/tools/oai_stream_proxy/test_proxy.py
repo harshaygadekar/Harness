@@ -72,6 +72,15 @@ class T(unittest.TestCase):
         self.assertNotIn("self.headers)", src)
 
 
+
+class TimingFieldsTest(unittest.TestCase):
+    def test_timing_fields(self):
+        rec = proxy.usage_record(200, {"prompt_tokens": 3}, False, 1000, 1250)
+        self.assertEqual((rec["start_ms"], rec["end_ms"], rec["dur_ms"]), (1000, 1250, 250))
+        rec = proxy.usage_record(200, None, False)
+        self.assertIsNone(rec["dur_ms"])
+
+
 if __name__ == "__main__":
     unittest.main()
 
@@ -211,7 +220,7 @@ class AllowListAndAuthTests(unittest.TestCase):
         self.assertEqual(self.req("GET", "/models"), 404)  # blocked locally: not forwarded, not logged
         rows = [json.loads(l) for l in open(self.usage_path)]
         self.assertEqual(len(rows), 1)
-        self.assertEqual(set(rows[0]), {"ts_ms", "run_id", "status", "input_tokens", "output_tokens"})
+        self.assertEqual(set(rows[0]), {"ts_ms", "run_id", "status", "input_tokens", "output_tokens", "start_ms", "end_ms", "dur_ms"})
         self.assertEqual(rows[0]["run_id"], "T7-run-A")  # from the operator file, not X-Run-Id
         self.assertEqual((rows[0]["status"], rows[0]["input_tokens"], rows[0]["output_tokens"]), (200, 11, 3))
         raw = open(self.usage_path).read()
@@ -223,7 +232,7 @@ class AllowListAndAuthTests(unittest.TestCase):
         rw = proxy.StreamRewriter()
         list(proxy.sse_rewrite(lines(), rw))
         rec = proxy.usage_record(200, rw.last_usage, True)
-        self.assertEqual(set(rec), {"ts_ms", "run_id", "status", "input_tokens", "output_tokens"})
+        self.assertEqual(set(rec), {"ts_ms", "run_id", "status", "input_tokens", "output_tokens", "start_ms", "end_ms", "dur_ms"})
 
 
     def test_run_id_file_reread_and_header_ignored(self):
@@ -238,3 +247,4 @@ class AllowListAndAuthTests(unittest.TestCase):
         rows = [json.loads(l) for l in open(self.usage_path)]
         self.assertEqual([r["run_id"] for r in rows], ["T7-run-A", "T7-run-C"])
         open(self.runid_path, "w").write("T7-run-A\n")
+

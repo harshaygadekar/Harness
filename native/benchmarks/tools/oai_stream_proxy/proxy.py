@@ -3,7 +3,7 @@
 
 See README.md for exactly what is rewritten. Stdlib only. Never logs headers or keys.
 """
-import json, os, sys, threading, http.client, urllib.parse
+import json, os, sys, threading, time, http.client, urllib.parse
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
 UPSTREAM = os.environ.get("PROXY_UPSTREAM", "https://generativelanguage.googleapis.com/v1beta/openai")
@@ -202,8 +202,12 @@ def current_run_id():
 _USAGE_LOCK = threading.Lock()
 
 
-def usage_record(status, usage, stream):
-    """Counts-only record: never bodies, headers or keys."""
+def _now_ms():
+    return int(time.time() * 1000)
+
+
+def usage_record(status, usage, stream, start_ms=None, end_ms=None):
+    """Counts-only record: never bodies, headers or keys. start_ms = upstream send (after pacing), end_ms = response fully relayed."""
     u = usage if isinstance(usage, dict) else {}
     def num(*names):
         for n in names:
@@ -213,13 +217,15 @@ def usage_record(status, usage, stream):
         return None
     return {"ts_ms": int(__import__("time").time() * 1000), "run_id": current_run_id(), "status": int(status),
             "input_tokens": num("prompt_tokens", "input_tokens"),
-            "output_tokens": num("completion_tokens", "output_tokens")}
+            "output_tokens": num("completion_tokens", "output_tokens"),
+            "start_ms": start_ms, "end_ms": end_ms,
+            "dur_ms": (end_ms - start_ms) if start_ms is not None and end_ms is not None else None}
 
 
-def log_usage(status, usage, stream):
+def log_usage(status, usage, stream, start_ms=None):
     if not USAGE_FILE:
         return
-    line = json.dumps(usage_record(status, usage, stream)) + "\n"
+    line = json.dumps(usage_record(status, usage, stream, start_ms, _now_ms() if start_ms is not None else None)) + "\n"
     with _USAGE_LOCK:
         with open(USAGE_FILE, "a") as f:
             f.write(line)
@@ -297,6 +303,7 @@ class H(BaseHTTPRequestHandler):
         if self.headers.get("Accept"):
             hdrs["Accept"] = self.headers["Accept"]
         PACER.wait()
+        t0 = _now_ms()
         conn.request(self.command, u.path + path, body=body, headers=hdrs)
         r = conn.getresponse()
         ctype = r.getheader("Content-Type", "")
@@ -315,7 +322,7 @@ class H(BaseHTTPRequestHandler):
                     self.wfile.write(out)
                     self.wfile.flush()
             finally:
-                log_usage(r.status, rw.last_usage, True)
+                log_usage(r.status, rw.last_usage, True, t0)
             self.close_connection = True
             return
         data = r.read()
@@ -325,7 +332,7 @@ class H(BaseHTTPRequestHandler):
                 usage = json.loads(data).get("usage")
             except (ValueError, AttributeError):
                 usage = None
-        log_usage(r.status, usage, False)
+        log_usage(r.status, usage, False, t0)
         if r.status == 200 and "json" in ctype:
             try:
                 data = json.dumps(rewrite_nonstream(json.loads(data))).encode()
