@@ -2,7 +2,7 @@
 """Test-only (no Gemini, no key): run_isolated.sh in BENCH_TEST_FAKE_AGENT mode against a local fake upstream.
 (a) SIGINT / SIGTERM to the runner mid-run -> no benchagent procs, current_run_id empty, no proxy on the port.
 (b) SIGKILL to the runner mid-run -> state left behind; the next runner cleans all 3 before its gate."""
-import json, os, re, signal, socket, subprocess, sys, tempfile, threading, time
+import hashlib, json, os, re, signal, socket, subprocess, sys, tempfile, threading, time
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 HERE = os.path.dirname(os.path.abspath(__file__)); RUNNER = os.path.join(HERE, "run_isolated.sh")
 RIDF = "/opt/benchproxy/run/current_run_id"; AU = "benchagent"
@@ -79,6 +79,13 @@ hd_k, ws_k = hd_of(d)
 check("SIGKILL: root-owned run record exists", hd_k is not None and (ws_k or "").startswith("/tmp/iso-"), f"{hd_k} {ws_k}")
 time.sleep(1.5)  # let the fake agent's request reach the proxy log
 p.kill(); p.wait(30); time.sleep(1)
+# Plant a symlink at the copy destination inside the killed run's folder; it points at a sentinel file.
+SENT_F = tempfile.NamedTemporaryFile("w", prefix="sentinel-file-", dir="/tmp", delete=False); SENT_F.write("sentinel\n"); SENT_F.close()
+sha_f = lambda p_: hashlib.sha256(open(p_, "rb").read()).hexdigest()
+sent_sha = sha_f(SENT_F.name)
+dst = os.path.join(d, "proxy_usage.jsonl")
+if os.path.lexists(dst): os.unlink(dst)
+os.symlink(SENT_F.name, dst)
 left = (n_agent(), rid(), listening(port))
 check("SIGKILL: state left behind (agents, run id, proxy)", left[0] >= 1 and left[1] != "" and left[2], f"agents={left[0]} rid={left[1]!r} listening={left[2]}")
 p2 = start("H2")
@@ -93,6 +100,9 @@ km = json.load(open(os.path.join(d, "killed.json"))) if os.path.exists(os.path.j
 check("next runner: killed run marked status killed", km.get("status") == "killed", str(km.get("status")))
 ul = open(os.path.join(d, "proxy_usage.jsonl")).read().splitlines() if os.path.exists(os.path.join(d, "proxy_usage.jsonl")) else []
 check("next runner: killed run's proxy usage log copied into its folder", len(ul) >= 1, f"{len(ul)} row(s)")
+check("rescue: planted symlink at destination did not change the sentinel (sha256)", sha_f(SENT_F.name) == sent_sha)
+check("rescue: destination is now a regular file (not a symlink) with the copied log", os.path.isfile(dst) and not os.path.islink(dst) and len(open(dst).read().splitlines()) >= 1)
+os.unlink(SENT_F.name)
 check("next runner: killed run's /tmp/benchproxy-* and /tmp/iso-* deleted", hd_k and not os.path.exists(hd_k) and not os.path.exists(ws_k))
 check("next runner: own run id set (old one replaced)", rid() == os.path.basename(d2 or ""), repr(rid()))
 p2.send_signal(signal.SIGTERM); rc2 = p2.wait(60)

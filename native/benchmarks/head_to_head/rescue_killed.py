@@ -39,6 +39,25 @@ def real_dir(path, uid):
     return None
 
 
+def safe_write(dst, data):
+    """Write data to dst and never follow a link. A symlink or a regular file at dst is removed first
+    (the link itself, not its target). A directory at dst is skipped and logged."""
+    try:
+        st = os.lstat(dst)
+        if stat.S_ISDIR(st.st_mode):
+            log(f"skip {dst}: is a directory; not written"); return False
+        os.unlink(dst)
+    except FileNotFoundError:
+        pass
+    try:
+        fd = os.open(dst, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
+    except OSError as e:
+        log(f"skip {dst}: cannot create ({e.__class__.__name__}); not written"); return False
+    with os.fdopen(fd, "wb") as fh:
+        fh.write(data)
+    return True
+
+
 def sudo(*a):
     subprocess.run(["sudo", "-n", *a], check=False)
 
@@ -93,7 +112,8 @@ def main(runs, agent_user):
                     continue
                 if stat.S_ISREG(fs.st_mode) and fs.st_uid == bp:
                     out = subprocess.run(["sudo", "-n", "cat", "--", src], capture_output=True).stdout
-                    open(os.path.join(d, f), "wb").write(out); copied.append(f)
+                    if safe_write(os.path.join(d, f), out):
+                        copied.append(f)
                 else:
                     log(f"record {name}: {f} is not a regular benchproxy file; not copied")
         json.dump({"status": "killed", "reason": "runner did not finish; marked by the next run from a root-owned record",
