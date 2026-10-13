@@ -696,3 +696,20 @@ Notes:
 - This is one task with 3 runs per agent on a weak model. It does not support a claim that either agent is better.
 
 Folders: `native/benchmarks/head_to_head/runs/T7-trackB-{fx,harness}-isolated-cap50-*-20261012T17*`.
+
+## T1 v2, 50-step cap for both agents (isolated): partial, stopped because of upstream 503s
+
+Label: **weak model (Gemini Flash-Lite) via proxy**, free tier. Setup: 5 s pacing, `benchagent` under `env -i`, Harness 92b84dc, fx v0.0.13 `--auto`, `FX_MAX_AGENT_STEPS=50`, Harness max turns 50. The runner is chore/key-isolation cb8ab85, which is 09bd397 plus one change that adds the T1 case. The pinned proxy is /opt/benchproxy/cb8ab85, and its proxy.py is byte-identical to 09bd397 (sha256 87cd86cb…). Every run passed the ps check and key_isolation_check with OVERALL PASS, and every run has proxy counts. There are no per-request times: the timing change (1da183b) is waiting for review and was not used.
+
+Order: F1 and F2 ran first in the old order and are marked **not interleaved**. H1 and F3 were then run interleaved. H2 and H3 were **not run**: the set was stopped because Gemini returned 503 "model is currently experiencing high demand" on many requests. This was not a 429 and not a quota error.
+
+| run | order | oracle success | stop reason | wall ms | proxy pacing hold ms | wall minus hold ms | tool calls | self in/out tok | proxy req (status) | proxy in/out tok | first edit | list/search/read | peak RSS KB |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| F1 | not interleaved | no | fx timeout 480 s (exit 124, no JSON) | 480009 | 9106 | 470903 | 0 | n/a | 14 (200×7, 503×7) | 28492 / 150 | none | 0/0/0 | n/a |
+| F2 | not interleaved | no | fx timeout 480 s (exit 124, no JSON) | 480006 | 10638 | 469368 | 0 | n/a | 17 (200×12, 503×4, 400×1) | 54341 / 239 | none | 0/0/0 | n/a |
+| H1 | interleaved | no | Failed (MODEL_ERROR 503) after 2 model req | 223288 | 6981 | 216307 | 1 | 620 / 10 | 8 (200×2, 503×5, 400×1) | 1289 / 10 | none | 1/0/0 | 4320 |
+| F3 | interleaved | yes | exit 0 | 659493 | 62778 | 596715 | 22 | 151199 / 1404 | 28 (200×26, 503×2) | 166604 / 1486 | 14 | 2/0/9 | 140832 |
+
+About the split: "pacing hold" is the time the proxy held requests to keep the 5 s spacing. "Wall minus hold" still includes upstream latency and retry back-off, because the reviewed proxy does not record per-request start and end times.
+
+These runs are not valid for comparison: upstream 503s dominate them. Rerun the set when upstream is stable.
