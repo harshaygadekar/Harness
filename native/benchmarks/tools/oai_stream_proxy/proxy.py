@@ -231,6 +231,17 @@ def log_usage(status, usage, stream, start_ms=None):
             f.write(line)
 
 
+def log_transport_error(start_ms):
+    """Upstream transport error: status "error" plus times; no other fields, no exception text."""
+    if not USAGE_FILE:
+        return
+    end = _now_ms()
+    line = json.dumps({"status": "error", "start_ms": start_ms, "end_ms": end, "dur_ms": end - start_ms}) + "\n"
+    with _USAGE_LOCK:
+        with open(USAGE_FILE, "a") as f:
+            f.write(line)
+
+
 def write_hold_file():
     if HOLD_FILE:
         tmp = HOLD_FILE + ".tmp"
@@ -304,8 +315,21 @@ class H(BaseHTTPRequestHandler):
             hdrs["Accept"] = self.headers["Accept"]
         PACER.wait()
         t0 = _now_ms()
-        conn.request(self.command, u.path + path, body=body, headers=hdrs)
-        r = conn.getresponse()
+        try:
+            conn.request(self.command, u.path + path, body=body, headers=hdrs)
+            r = conn.getresponse()
+        except Exception:
+            # Transport error (connect/timeout/reset): log times only, never the exception text.
+            log_transport_error(t0)
+            try:
+                conn.close()
+                self.send_response(502)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+            except Exception:
+                pass
+            self.close_connection = True
+            return
         ctype = r.getheader("Content-Type", "")
         PACER.note_status(r.status)
         write_hold_file()

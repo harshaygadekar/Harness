@@ -187,6 +187,26 @@ class AllowListAndAuthTests(unittest.TestCase):
         r = c.getresponse(); r.read(); c.close()
         return r.status
 
+    def test_transport_error_logs_times_only(self):
+        import socket
+        sk = socket.socket(); sk.bind(("127.0.0.1", 0)); dead = sk.getsockname()[1]; sk.close()
+        saved = proxy.UPSTREAM
+        proxy.UPSTREAM = "http://127.0.0.1:%d/v1beta/openai" % dead
+        try:
+            open(self.usage_path, "w").close()
+            st = self.req("POST", "/chat/completions", body=b'{"model":"m","messages":[],"x":"MARKER_ERR_BODY"}', auth="Bearer MARKER_ERR_AUTH")
+        finally:
+            proxy.UPSTREAM = saved
+        self.assertEqual(st, 502)
+        rows = [json.loads(l) for l in open(self.usage_path)]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(set(rows[0]), {"status", "start_ms", "end_ms", "dur_ms"})
+        self.assertEqual(rows[0]["status"], "error")
+        self.assertEqual(rows[0]["dur_ms"], rows[0]["end_ms"] - rows[0]["start_ms"])
+        raw = open(self.usage_path).read()
+        for m in ("MARKER_ERR_BODY", "MARKER_ERR_AUTH", "fake-test-key-123", "Connection", "refused"):
+            self.assertNotIn(m, raw)
+
     def test_other_paths_404_without_upstream_call(self):
         self.seen.clear()
         for m, p in [("GET", "/models"), ("GET", "/v1beta/models"), ("POST", "/embeddings"),
