@@ -48,33 +48,20 @@ impl Workspace {
                 other => out.push(other),
             }
         }
-        // If absolute path, must still be under root.
-        let canon_parent = out
-            .parent()
-            .map(|p| {
-                if p.exists() {
-                    p.canonicalize().unwrap_or_else(|_| p.to_path_buf())
-                } else {
-                    // walk up to existing ancestor
-                    let mut a = p.to_path_buf();
-                    while !a.exists() {
-                        if !a.pop() {
-                            break;
-                        }
-                    }
-                    a.canonicalize().unwrap_or(a)
-                }
-            })
-            .unwrap_or_else(|| self.root.clone());
-
+        // Canonicalize the deepest existing ancestor (this resolves links),
+        // then add back ALL the parts that do not exist yet.
         let joined = if out.exists() {
             out.canonicalize().map_err(WorkspaceError::Io)?
         } else {
-            let name = out
-                .file_name()
-                .map(PathBuf::from)
-                .unwrap_or_else(|| PathBuf::from("."));
-            canon_parent.join(name)
+            let mut a = out.clone();
+            while !a.exists() {
+                if !a.pop() {
+                    break;
+                }
+            }
+            let tail = out.strip_prefix(&a).map(Path::to_path_buf).unwrap_or_default();
+            let base = a.canonicalize().unwrap_or(a);
+            base.join(tail)
         };
 
         // Use strip_prefix, not starts_with (Jessie: /tmp/ws vs /tmp/ws_evil).
@@ -109,6 +96,34 @@ mod tests {
         let ws = Workspace::new(&root).unwrap();
         // Absolute path into sibling that shares a string prefix must fail.
         assert!(ws.resolve(evil.join("secret.txt").to_str().unwrap()).is_err());
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn new_nested_path_keeps_middle_parts() {
+        let dir = std::env::temp_dir().join(format!("harness-ws-nested-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let ws = Workspace::new(&dir).unwrap();
+        assert_eq!(ws.resolve("a/b/c").unwrap(), ws.root().join("a/b/c"));
+        fs::create_dir_all(dir.join("a")).unwrap();
+        assert_eq!(ws.resolve("a/b/c").unwrap(), ws.root().join("a/b/c"));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn new_path_through_outside_link_denied() {
+        let base = std::env::temp_dir().join(format!("harness-ws-link-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        let root = base.join("ws");
+        let out = base.join("out");
+        fs::create_dir_all(&root).unwrap();
+        fs::create_dir_all(&out).unwrap();
+        std::os::unix::fs::symlink(&out, root.join("l")).unwrap();
+        let ws = Workspace::new(&root).unwrap();
+        for p in ["l/x", "l/new/deep/x", "l/new/../x"] {
+            assert!(matches!(ws.resolve(p), Err(WorkspaceError::Escape(_))), "{p}");
+        }
         let _ = fs::remove_dir_all(&base);
     }
 

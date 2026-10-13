@@ -565,3 +565,17 @@ fn escape_reason_code_for_dotdot() {
     assert_denied("code_dotdot", no_setup, "read_file", json!({"path": "../outside/secret.txt"}), "path_escape");
     assert_denied("code_wdotdot", no_setup, "write_file", json!({"path": "../outside/x", "content": "x"}), "path_escape");
 }
+
+#[test]
+fn write_new_nested_path_lands_in_place() {
+    let fx = Fixture::new("nested_write");
+    let (ok, c) = run_one(&fx, "write_file", json!({"path": "a/b/c", "content": "nested"}));
+    assert!(ok, "{c}");
+    assert_eq!(fs::read_to_string(fx.ws.join("a/b/c")).unwrap(), "nested");
+    assert!(!fx.ws.join("c").exists());
+}
+
+#[test]
+fn write_new_path_through_outside_link_denied() {
+    assert_denied("link_new_write", no_setup, "write_file", json!({"path": "link_dir/new/deep/x", "content": "x"}), "path_escape");
+}
