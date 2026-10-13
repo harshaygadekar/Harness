@@ -27,10 +27,7 @@ impl Tool for ListFiles {
     }
     fn call(&self, args: &Value) -> Result<ToolResult, ToolError> {
         let rel = args.get("path").and_then(|v| v.as_str()).unwrap_or(".");
-        let path = self
-            .workspace
-            .resolve(rel)
-            .map_err(|e| ToolError::Failed(e.to_string()))?;
+        let path = crate::guard::resolve(&self.workspace, rel)?;
         if !path.is_dir() {
             return Err(ToolError::Failed(format!("not a directory: {rel}")));
         }
@@ -80,10 +77,7 @@ impl Tool for ReadFile {
             .get("path")
             .and_then(|v| v.as_str())
             .ok_or_else(|| ToolError::Failed("path required".into()))?;
-        let path = self
-            .workspace
-            .resolve(rel)
-            .map_err(|e| ToolError::Failed(e.to_string()))?;
+        let path = crate::guard::resolve_read(&self.workspace, rel)?;
         let meta = fs::metadata(&path).map_err(|e| ToolError::Failed(e.to_string()))?;
         if meta.len() > 256 * 1024 {
             return Err(ToolError::Failed("file too large (>256 KiB)".into()));
@@ -129,10 +123,7 @@ impl Tool for WriteFile {
         if content.len() > 512 * 1024 {
             return Err(ToolError::Failed("content too large (>512 KiB)".into()));
         }
-        let path = self
-            .workspace
-            .resolve(rel)
-            .map_err(|e| ToolError::Failed(e.to_string()))?;
+        let path = crate::guard::resolve_write(&self.workspace, rel)?;
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(|e| ToolError::Failed(e.to_string()))?;
         }

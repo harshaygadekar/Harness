@@ -45,10 +45,7 @@ impl Tool for ApplyPatch {
         if old.is_empty() {
             return Err(ToolError::Failed("old_string empty".into()));
         }
-        let path = self
-            .workspace
-            .resolve(rel)
-            .map_err(|e| ToolError::Failed(e.to_string()))?;
+        let path = crate::guard::resolve_write(&self.workspace, rel)?;
         let text = fs::read_to_string(&path).map_err(|e| ToolError::Failed(e.to_string()))?;
         let count = text.matches(old).count();
         if count == 0 {

@@ -3,6 +3,7 @@
 
 mod bound;
 mod filesystem;
+pub mod guard;
 mod git;
 mod patch;
 mod search;
@@ -11,6 +12,7 @@ mod tests_tool;
 pub mod proc;
 mod workspace;
 
+pub use guard::{deny_code, REASON_ENV_READ, REASON_GIT_WRITE, REASON_PATH_ESCAPE};
 pub use filesystem::{ListFiles, ReadFile, WriteFile};
 pub use git::{GitDiff, GitStatus};
 pub use patch::ApplyPatch;
