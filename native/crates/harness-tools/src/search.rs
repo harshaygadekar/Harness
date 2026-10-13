@@ -37,10 +37,7 @@ impl Tool for Search {
             .ok_or_else(|| ToolError::Failed("pattern required".into()))?;
         let rel = args.get("path").and_then(|v| v.as_str()).unwrap_or(".");
         let use_re = args.get("regex").and_then(|v| v.as_bool()).unwrap_or(false);
-        let root = self
-            .workspace
-            .resolve(rel)
-            .map_err(|e| ToolError::Failed(e.to_string()))?;
+        let root = crate::guard::resolve(&self.workspace, rel)?;
 
         let re = if use_re {
             RegexBuilder::new(pattern)
@@ -55,13 +52,20 @@ impl Tool for Search {
         };
 
         let mut hits = Vec::new();
-        walk(&root, self.workspace.root(), &re, &mut hits, 50)
-            .map_err(|e| ToolError::Failed(e.to_string()))?;
-        let raw = if hits.is_empty() {
-            "(no hits)".into()
+        let mut skipped = Vec::new();
+        walk(&root, self.workspace.root(), &re, &mut hits, &mut skipped, 50);
+        // One note per skipped link. The note has the link path in the
+        // workspace only, never the target path or content.
+        let mut lines: Vec<String> = skipped
+            .iter()
+            .map(|p| format!("{}{}: {p} (link leaves workspace; skipped)", crate::guard::DENY_PREFIX, crate::guard::REASON_PATH_ESCAPE))
+            .collect();
+        if hits.is_empty() {
+            lines.push("(no hits)".into());
         } else {
-            hits.join("\n")
-        };
+            lines.extend(hits);
+        }
+        let raw = lines.join("\n");
         Ok(ToolResult {
             content: bound_excerpt(&raw, 16 * 1024),
             ok: true,
@@ -74,14 +78,15 @@ fn walk(
     ws_root: &std::path::Path,
     re: &regex::Regex,
     hits: &mut Vec<String>,
+    skipped: &mut Vec<String>,
     max: usize,
-) -> std::io::Result<()> {
+) {
     if hits.len() >= max {
-        return Ok(());
+        return;
     }
     let entries = match fs::read_dir(dir) {
         Ok(e) => e,
-        Err(_) => return Ok(()),
+        Err(_) => return,
     };
     for ent in entries.flatten() {
         if hits.len() >= max {
@@ -93,14 +98,27 @@ fn walk(
         if name.starts_with('.') || name == "target" || name == "node_modules" {
             continue;
         }
-        if path.is_dir() {
-            walk(&path, ws_root, re, hits, max)?;
-        } else if path.is_file() {
-            let meta = ent.metadata()?;
+        // Resolve the real path. Skip links that leave the workspace
+        // (path_escape). Do not descend into linked dirs (no loops).
+        // canonicalize reads only the link, not the target content.
+        let Ok(real) = path.canonicalize() else { continue };
+        if real.strip_prefix(ws_root).is_err() {
+            let rel = path.strip_prefix(ws_root).unwrap_or(&path);
+            skipped.push(rel.display().to_string());
+            continue;
+        }
+        let is_link = ent.file_type().map(|t| t.is_symlink()).unwrap_or(true);
+        if real.is_dir() {
+            if is_link {
+                continue;
+            }
+            walk(&path, ws_root, re, hits, skipped, max);
+        } else if real.is_file() {
+            let Ok(meta) = fs::metadata(&real) else { continue };
             if meta.len() > 256 * 1024 {
                 continue;
             }
-            let Ok(text) = fs::read_to_string(&path) else {
+            let Ok(text) = fs::read_to_string(&real) else {
                 continue;
             };
             for (i, line) in text.lines().enumerate() {
@@ -114,7 +132,6 @@ fn walk(
             }
         }
     }
-    Ok(())
 }
 
 fn truncate(s: &str, n: usize) -> String {
