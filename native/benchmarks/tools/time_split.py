@@ -8,6 +8,12 @@ overhead (Harness: rest; fx: not separable, included in model).
 Label: weak model (Gemini Flash-Lite) through the proxy.
 """
 import json, os, sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "head_to_head"))
+from run_guard import refuse_reason  # single rule; do not copy
+
+
+class Refused(Exception):
+    pass
 
 def harness_parts(events):
     """Return (model_wait_ms, tool_ms, n_requests, first_edit_step) from run.jsonl events."""
@@ -30,6 +36,9 @@ def fx_tool_ms(stdout_obj):
     return sum((c.get("command_result") or {}).get("duration_ms") or 0 for c in stdout_obj.get("tool_calls", []))
 
 def split(run_dir):
+    why = refuse_reason(run_dir)
+    if why:
+        raise Refused(f"{run_dir}: {why}")
     s = json.load(open(os.path.join(run_dir, "summary.json")))
     hold = json.load(open(os.path.join(run_dir, "proxy_hold.json")))
     wall = s["wall_ms"]; h = hold["hold_ms"]; retry = s.get("retry_wait_ms") or 0
@@ -53,5 +62,11 @@ def split(run_dir):
     return r
 
 if __name__ == "__main__":
+    refused = 0
     for d in sys.argv[1:]:
-        print(json.dumps(split(d)))
+        try:
+            print(json.dumps(split(d)))
+        except Refused as e:
+            refused += 1
+            print(f"REFUSED {e}", file=sys.stderr)
+    sys.exit(3 if refused else 0)

@@ -1,5 +1,5 @@
 import json, os, tempfile, unittest
-from time_split import harness_parts, fx_tool_ms, split
+from time_split import harness_parts, fx_tool_ms, split, Refused
 
 EV = [{"type": "model_request", "ts_ms": 0}, {"type": "model_response", "ts_ms": 5000},
       {"type": "tool_call", "id": "a", "name": "read_file", "ts_ms": 5000},
@@ -21,6 +21,18 @@ class T(unittest.TestCase):
         open(os.path.join(d, "rec", "run.jsonl"), "w").write("\n".join(json.dumps(e) for e in EV))
         r = split(d)
         self.assertEqual((r["model_ms"], r["tool_ms"], r["overhead_ms"], r["out_tok_per_req"]), (3000, 20, 980, 15.0))
+
+    def _marked(self, name, obj):
+        d = tempfile.mkdtemp()
+        json.dump(obj, open(os.path.join(d, name), "w"))
+        with self.assertRaises(Refused):
+            split(d)
+    def test_refuse_fake(self):
+        self._marked("run_env.json", {"fake": True})
+    def test_refuse_killed_file(self):
+        self._marked("killed.json", {"status": "killed"})
+    def test_refuse_killed_env(self):
+        self._marked("run_env.json", {"status": "killed"})
 
 if __name__ == "__main__":
     unittest.main()
