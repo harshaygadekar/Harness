@@ -2,7 +2,7 @@
 """Test-only (no Gemini, no key): run_isolated.sh in BENCH_TEST_FAKE_AGENT mode against a local fake upstream.
 (a) SIGINT / SIGTERM to the runner mid-run -> no benchagent procs, current_run_id empty, no proxy on the port.
 (b) SIGKILL to the runner mid-run -> state left behind; the next runner cleans all 3 before its gate."""
-import json, os, signal, socket, subprocess, sys, tempfile, threading, time
+import json, os, re, signal, socket, subprocess, sys, tempfile, threading, time
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 HERE = os.path.dirname(os.path.abspath(__file__)); RUNNER = os.path.join(HERE, "run_isolated.sh")
 RIDF = "/opt/benchproxy/run/current_run_id"; AU = "benchagent"
@@ -30,10 +30,11 @@ curl -s -m 5 -X POST -H 'Content-Type: application/json' -d '{"model":"m","messa
 exit 0
 """); short.close(); os.chmod(short.name, 0o755)
 import glob
+ACT = "/opt/benchproxy/run/active"
 def hd_of(run_dir):
-    for hd in glob.glob("/tmp/benchproxy-*"):
-        if sh(f"cat {hd}/run_dir 2>/dev/null") == run_dir: return hd, sh(f"cat {hd}/ws_dir 2>/dev/null")
-    return None, None
+    rec = os.path.join(ACT, os.path.basename(run_dir) + ".json")
+    if not os.path.exists(rec): return None, None
+    r = json.load(open(rec)); return r["hd"], r["ws"]
 runs = tempfile.mkdtemp(prefix="sigtest-runs-"); os.chmod(runs, 0o777)
 
 def sh(c): return subprocess.run(c, shell=True, capture_output=True, text=True).stdout.strip()
@@ -75,7 +76,7 @@ for sig in (signal.SIGINT, signal.SIGTERM):
 
 clear_runs(); p = start("H1"); d, port = wait_mid_run()
 hd_k, ws_k = hd_of(d)
-check("SIGKILL: run pointers exist in /tmp", hd_k is not None and (ws_k or "").startswith("/tmp/iso-"), f"{hd_k} {ws_k}")
+check("SIGKILL: root-owned run record exists", hd_k is not None and (ws_k or "").startswith("/tmp/iso-"), f"{hd_k} {ws_k}")
 time.sleep(1.5)  # let the fake agent's request reach the proxy log
 p.kill(); p.wait(30); time.sleep(1)
 left = (n_agent(), rid(), listening(port))
@@ -109,12 +110,72 @@ for x in (d3, kd):
     check(f"summ.py refuses {os.path.basename(x)}", r.returncode == 3 and "REFUSED" in r.stderr, r.stderr.strip())
 r = subprocess.run([sys.executable, os.path.join(HERE, "results_table.py"), d3, kd], capture_output=True, text=True)
 check("results_table.py refuses fake and killed runs (0 counted)", r.stderr.count("REFUSED") == 2 and len(r.stdout.strip().splitlines()) == 1, r.stderr.strip().splitlines()[-1])
-# Clean up this test's own /tmp folders and run folders.
-for hd in glob.glob("/tmp/benchproxy-*"):
-    rd_ = sh(f"cat {hd}/run_dir 2>/dev/null")
-    if rd_.startswith(runs):
-        ws_ = sh(f"cat {hd}/ws_dir 2>/dev/null")
-        if ws_.startswith("/tmp/iso-"): subprocess.run(["sudo", "-n", "rm", "-rf", ws_])
-        subprocess.run(["sudo", "-n", "rm", "-rf", hd])
+# ---- Planted folders and forged pointers (Jessie's hole). Nothing outside legit run folders may change.
+import hashlib
+def snapshot(paths):
+    out = {}
+    for root in paths:
+        out[root] = sh(f"sudo -n find {root} -xdev \\( -type f -o -type l -o -type d \\) -printf '%p %y %u %m %l\\n' 2>/dev/null | sort") + "|" + \
+                    sh(f"sudo -n find {root} -xdev -type f -exec sha256sum {{}} + 2>/dev/null | sort")
+    return out
+clear_runs()
+SENT = tempfile.mkdtemp(prefix="sentinel-", dir="/tmp"); open(os.path.join(SENT, "canary.txt"), "w").write("canary\n"); os.chmod(SENT, 0o755)
+DECOY = os.path.join(runs, "decoy-run"); os.makedirs(DECOY); open(os.path.join(DECOY, "canary.txt"), "w").write("decoy\n")
+bp_home = "/home/benchproxy"
+A = "sudo -n -u benchagent bash -c"
+planted = ["/tmp/benchproxy-20991231T000001-X1", "/tmp/benchproxy-20991231T000002-X2", "/tmp/iso-T1-harness-X3-abcd", "/tmp/iso-T1-harness-X4-efgh"]
+subprocess.run(A.split() + [f"""
+mkdir -p {planted[0]} && printf '%s\\n' '{DECOY}' > {planted[0]}/run_dir && printf '%s\\n' '/tmp/iso-x/../../home/benchproxy' > {planted[0]}/ws_dir && echo '{{}}' > {planted[0]}/proxy_usage.jsonl
+ln -s {SENT} {planted[1]}
+mkdir -p {planted[2]} && echo planted > {planted[2]}/f
+ln -s {SENT} {planted[3]}
+"""], check=False)
+# Forged records (worst case: even a root-owned record with hostile paths must be refused).
+DEC = {}
+for k in ("dotdot", "symlinkws", "wrongownerhd", "symlinkhd"):
+    DEC[k] = os.path.join(runs, "decoy-" + k); os.makedirs(DEC[k]); open(os.path.join(DEC[k], "canary.txt"), "w").write(k + "\n")
+forged = {
+  "dotdot": {"hd": planted[0], "ws": "/tmp/iso-x/../../home/benchproxy", "run_dir": DEC["dotdot"]},
+  "symlinkws": {"hd": "/tmp/benchproxy-20991231T000009-Z9", "ws": planted[3], "run_dir": DEC["symlinkws"]},
+  "wrongownerhd": {"hd": planted[0], "ws": planted[2], "run_dir": DEC["wrongownerhd"]},
+  "symlinkhd": {"hd": planted[1], "ws": planted[2], "run_dir": DEC["symlinkhd"]},
+  "outside-runs": {"hd": planted[0], "ws": planted[2], "run_dir": SENT},
+}
+for k, v in forged.items():
+    nm = os.path.basename(v["run_dir"]) + ".json" if k != "outside-runs" else os.path.basename(SENT) + ".json"
+    subprocess.run(f"echo '{json.dumps(v)}' | sudo -n tee {ACT}/{nm} >/dev/null && sudo -n chmod 644 {ACT}/{nm}", shell=True)
+    snap_rec = nm
+watch = [SENT, DECOY, bp_home] + list(DEC.values()) + [p for p in planted if os.path.lexists(p)]
+before = snapshot(watch); recs_before = sorted(os.listdir(ACT))
+# (i) Rescue never runs while a benchagent process is alive.
+alive = subprocess.Popen(["sudo", "-n", "-u", "benchagent", "sleep", "60"]); time.sleep(0.5)
+r = subprocess.run([sys.executable, os.path.join(HERE, "rescue_killed.py"), runs, AU], capture_output=True, text=True)
+check("rescue refuses while a benchagent process is alive", r.returncode == 4 and "process alive" in r.stderr and snapshot(watch) == before and sorted(os.listdir(ACT)) == recs_before, r.stderr.strip())
+subprocess.run(["sudo", "-n", "pkill", "-KILL", "-u", "benchagent"]); alive.wait(10); time.sleep(0.5)
+# (ii) The next runner (full fake run) must skip every planted or forged item.
+p4 = start("H4", short.name); out4, _ = p4.communicate(timeout=300)
+after = snapshot(watch)
+check("planted: next runner finished", p4.returncode == 0, f"rc={p4.returncode}")
+check("planted: nothing outside legit run folders changed (listing + sha256)", after == before, ",".join(k for k in watch if before.get(k) != after.get(k)))
+check("planted: no killed.json written anywhere (decoy, sentinel, real runs)", sh(f"find {runs} {SENT} -name killed.json") == "")
+for k in forged:
+    nm = os.path.basename(forged[k]["run_dir"])
+    line = [l for l in out4.splitlines() if l.startswith(f"rescue_killed: skip record {nm}.json")]
+    check(f"planted: forged record '{k}' skipped and logged", len(line) == 1, line[0][len("rescue_killed: "):] if line else "no line")
+real = [os.path.join(runs, x) for x in os.listdir(runs) if not x.startswith("decoy-")]
+check("planted: real run not marked killed", all("status" not in json.load(open(os.path.join(x, "run_env.json"))) for x in real if os.path.exists(os.path.join(x, "run_env.json"))))
+# Clean up planted items, forged records and this test's own folders.
+for k, v in forged.items():
+    nm = os.path.basename(v["run_dir"]) + ".json" if k != "outside-runs" else os.path.basename(SENT) + ".json"
+    subprocess.run(["sudo", "-n", "rm", "-f", "--", os.path.join(ACT, nm)])
+for pth in planted: subprocess.run(["sudo", "-n", "rm", "-rf", "--", pth])
+subprocess.run(["rm", "-rf", "--", SENT])
+for rec in glob.glob(ACT + "/*.json"):
+    try: r_ = json.load(open(rec))
+    except ValueError: continue
+    if str(r_.get("run_dir", "")).startswith(runs):
+        for pth in (r_.get("ws"), r_.get("hd")):
+            if pth and re.match(r"^/tmp/(iso|benchproxy)-", pth): subprocess.run(["sudo", "-n", "rm", "-rf", "--", pth])
+        subprocess.run(["sudo", "-n", "rm", "-f", "--", rec])
 up.shutdown(); os.unlink(short.name); os.unlink(fake.name); subprocess.run(["sudo", "-n", "rm", "-rf", runs])
 print("OVERALL", "PASS" if ok else "FAIL"); sys.exit(0 if ok else 1)

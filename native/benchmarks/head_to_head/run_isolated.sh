@@ -15,43 +15,25 @@ if [ -n "$FAKE" ]; then
   [[ "${BENCH_TEST_UPSTREAM:-}" =~ ^http://127\.0\.0\.1:[0-9]+(/.*)?$ ]] || { echo "fake mode needs BENCH_TEST_UPSTREAM=http://127.0.0.1:<port>" >&2; exit 2; }
 fi
 # Start of every run, before anything else: kill all agent-user processes, empty the run id, stop any old proxy.
-# Logs of killed runs: a /tmp/benchproxy-* folder that still exists belongs to a run that did not finish
-# (a finished run deletes its own). Copy its proxy logs into that run's folder, mark the run killed,
-# then delete the folder and the run's /tmp/iso-* workspace. A folder with no logs is only deleted.
-rescue_killed() {
-  local hd d p
-  for hd in /tmp/benchproxy-*; do
-    [ -d "$hd" ] || continue
-    d=$(cat "$hd/run_dir" 2>/dev/null); p=$(cat "$hd/ws_dir" 2>/dev/null)
-    if [ -n "$d" ] && [ -d "$d" ] && { [ -f "$hd/proxy_usage.jsonl" ] || [ -f "$hd/proxy_hold.json" ]; }; then
-      for f in proxy_usage.jsonl proxy_hold.json; do [ -f "$hd/$f" ] && sudo -n cat "$hd/$f" > "$d/$f"; done
-      python3 - "$d" <<'PY'
-import json,os,sys
-d=sys.argv[1]; m={"status":"killed","reason":"runner did not finish; proxy logs copied by the next run's pre_clean"}
-json.dump(m,open(os.path.join(d,"killed.json"),"w"),indent=1)
-p=os.path.join(d,"run_env.json")
-if os.path.exists(p):
-    e=json.load(open(p)); e["status"]="killed"; json.dump(e,open(p,"w"),indent=1)
-PY
-      echo "pre_clean: run $(basename "$d") marked killed; proxy logs copied" >&2
-    fi
-    case "$p" in /tmp/iso-*) sudo -n rm -rf "$p";; esac
-    sudo -n rm -rf "$hd"
-  done
-}
+# Logs of killed runs: handled by rescue_killed.py from ROOT-OWNED records only (never from /tmp pointers).
+RUNS=${RUNS:-$HERE/runs}
+rescue_killed() { python3 "$HERE/rescue_killed.py" "$RUNS" "$AU"; }
 pre_clean() {
-  rescue_killed
   "$HERE/agent_cleanup.sh" "$AU" >/dev/null
+  # The rescue runs ONLY when no agent process is alive (no folder can be swapped for a link between check and rm).
+  if [ "$(pgrep -u "$AU" | wc -l)" -ne 0 ]; then echo "pre_clean: $AU process(es) still alive; rescue skipped; run not started" >&2; exit 6; fi
   sudo -n install -d -o root -g root -m 755 /opt/benchproxy/run; sudo -n truncate -s 0 "$RIDF" 2>/dev/null || sudo -n install -o root -g root -m 644 /dev/null "$RIDF"
   sudo -n pkill -KILL -u benchproxy -f "proxy.py" 2>/dev/null; sleep 0.3
+  rescue_killed
 }
 pre_clean
 # On every exit path (normal, error, INT, TERM): same 3 steps, idempotent, original exit code kept.
-CLEANED=0; PORT=
+CLEANED=0; PORT=; FINISHED=0; REC=
 on_exit() {
   [ "$CLEANED" = 1 ] && return; CLEANED=1
   "$HERE/agent_cleanup.sh" "$AU" >/dev/null 2>&1
   sudo -n truncate -s 0 "$RIDF" 2>/dev/null
+  [ "$FINISHED" = 1 ] && [ -n "$REC" ] && sudo -n rm -f -- "$REC"   # normal end only; unfinished runs keep it
   if [ -n "$PORT" ]; then sudo -n pkill -TERM -u benchproxy -f "proxy.py $PORT" 2>/dev/null; sleep 0.3; sudo -n pkill -KILL -u benchproxy -f "proxy.py $PORT" 2>/dev/null; fi
 }
 trap 'rc=$?; on_exit; exit $rc' EXIT
@@ -113,9 +95,11 @@ RUN_ID=$(basename "$D")
 sudo -n install -d -o root -g root -m 755 /opt/benchproxy/run
 printf '%s\n' "$RUN_ID" | sudo -n tee /opt/benchproxy/run/current_run_id.tmp >/dev/null && sudo -n chmod 644 /opt/benchproxy/run/current_run_id.tmp && sudo -n mv -f /opt/benchproxy/run/current_run_id.tmp /opt/benchproxy/run/current_run_id
 HD=/tmp/benchproxy-$TS-$L
-# Pointers so a later run can find this run's folder and workspace if this runner is killed.
 sudo -n install -d -o benchproxy -g benchproxy -m 755 "$HD"
-printf '%s\n' "$D" | sudo -n tee "$HD/run_dir" >/dev/null; printf '%s\n' "$P" | sudo -n tee "$HD/ws_dir" >/dev/null
+# Root-owned record so a later run can find this run if this runner is killed (not writable by agent or proxy).
+ACT=/opt/benchproxy/run/active; sudo -n install -d -o root -g root -m 755 "$ACT"
+REC="$ACT/$(basename "$D").json"
+python3 -c 'import json,sys;print(json.dumps({"hd":sys.argv[1],"ws":sys.argv[2],"run_dir":sys.argv[3]}))' "$HD" "$P" "$D" | sudo -n tee "$REC.tmp" >/dev/null && sudo -n chmod 644 "$REC.tmp" && sudo -n mv -f "$REC.tmp" "$REC"
 if [ -n "$FAKE" ]; then  # test only: no key file, local fake upstream
   sudo -n install -d -o benchproxy -g benchproxy -m 755 "$HD"
   sudo -n -u benchproxy env -i PATH=/usr/bin:/bin PROXY_UPSTREAM="$BENCH_TEST_UPSTREAM" python3 "$PIN/proxy.py" "$PORT" --min-interval-ms "$IV" --hold-file "$HD/proxy_hold.json" --usage-file "$HD/proxy_usage.jsonl" 2>"$D/proxy.log" & sleep 1.5
@@ -174,4 +158,5 @@ ls -A "$P" | grep -vE '^(time.txt|rec)$' > "$D/parent_ls.txt"; echo "$MSHA $(sha
 [ -n "${SUMMARIZER:-}" ] && python3 "$SUMMARIZER" "$D" "$T" "$A" >/dev/null
 sudo -n truncate -s 0 /opt/benchproxy/run/current_run_id;  # empty = no active run (proxy answers 503 no_run)
  rm -rf "$P" "$HD" 2>/dev/null; sudo -n rm -rf "$P" "$HD" 2>/dev/null
+FINISHED=1
 echo "$D"
