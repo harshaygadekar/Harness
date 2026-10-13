@@ -155,7 +155,7 @@ e["proxy_proc_check"]=json.load(open(os.path.join(D,"proxy_proc_check.json")))
 json.dump(e,open(p,"w"),indent=1)
 P
 ls -A "$P" | grep -vE '^(time.txt|rec)$' > "$D/parent_ls.txt"; echo "$MSHA $(sha256sum "$P/MARKER.txt" | cut -c1-64)" > "$D/marker_sha.txt"
-[ -n "${SUMMARIZER:-}" ] && python3 "$SUMMARIZER" "$D" "$T" "$A" >/dev/null
+SUMMARIZER=${SUMMARIZER:-$HERE/summ.py}; [ -n "$SUMMARIZER" ] && python3 "$SUMMARIZER" "$D" "$T" "$A" >/dev/null
 sudo -n truncate -s 0 /opt/benchproxy/run/current_run_id;  # empty = no active run (proxy answers 503 no_run)
  rm -rf "$P" "$HD" 2>/dev/null; sudo -n rm -rf "$P" "$HD" 2>/dev/null
 FINISHED=1
