@@ -30,8 +30,10 @@ P
 sudo -n -u "$AU" chmod 600 /home/$AU/.fx/settings.json  # fx refuses group/world-writable private state
 sudo -n pkill -KILL -u benchproxy -f "proxy.py 8787" 2>/dev/null; sleep 0.5
 # Pin the proxy: export proxy.py + start_isolated.sh at this script's commit into a root-owned dir.
-PROXY_SHA=$(git -C "$HERE" rev-parse HEAD)
 REL=native/benchmarks/tools/oai_stream_proxy
+# Pin the proxy at the PROXY's own commit (env PROXY_COMMIT, a reviewed SHA), not the runner's HEAD.
+# Default: the last commit that touched the proxy dir on the runner's branch.
+PROXY_SHA=$(git -C "$HERE" rev-parse --verify "${PROXY_COMMIT:-$(git -C "$HERE" log -1 --format=%H -- "$NATIVE/benchmarks/tools/oai_stream_proxy")}^{commit}") || { echo "bad PROXY_COMMIT" >&2; exit 2; }
 PIN=/opt/benchproxy/$PROXY_SHA
 if [ ! -f "$PIN/proxy.py" ]; then
   TMPX=$(mktemp -d); git -C "$HERE" show "$PROXY_SHA:$REL/proxy.py" > "$TMPX/proxy.py"; git -C "$HERE" show "$PROXY_SHA:$REL/start_isolated.sh" > "$TMPX/start_isolated.sh"
