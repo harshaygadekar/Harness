@@ -2,14 +2,14 @@
 # One paced live run with key isolation. The operator never loads keys; the proxy (user benchproxy)
 # injects the upstream key. The agent runs as AGENT_USER (default benchagent) with `env -i`
 # (PATH, HOME, proxy URL, dummy key, step cap only).
-# usage: run_isolated.sh <T7|S1|T9> <F1|H1|...>   env: IV (ms, default 5000) CAP (24) TAG (isolated)
+# usage: run_isolated.sh <T1|T7|S1|T9> (T1 = T1 v2) <F1|H1|...>   env: IV (ms, default 5000) CAP (24) TAG (isolated)
 #        HB (harness binary) FX (fx binary) RUNS (output root) SUMMARIZER (optional script D T A)
 set -u
 T=$1; L=$2; IV=${IV:-5000}; CAP=${CAP:-24}; TAG=${TAG:-isolated}; AU=${AGENT_USER:-benchagent}
 HERE=$(cd "$(dirname "$0")" && pwd); NATIVE=$(cd "$HERE/../.." && pwd)
 HB=${HB:-$NATIVE/target/release/harness}; FX=${FX:-/tmp/fxbin/fx}; RUNS=${RUNS:-$HERE/runs}
 [ "$AU" != benchproxy ] || { echo "agent user must not be benchproxy" >&2; exit 2; }
-case $T in T7) PACK=T7_large_repo; FIX=large_repo_v1;; T9) PACK=T9_noisy_tests; FIX=noisy_tests_v1;; S1) PACK=S1_deny_probe; FIX=deny_probe_v1;; *) exit 2;; esac
+case $T in T1) PACK=T1v2_broken_calc; FIX=broken_calc_v2;; T7) PACK=T7_large_repo; FIX=large_repo_v1;; T9) PACK=T9_noisy_tests; FIX=noisy_tests_v1;; S1) PACK=S1_deny_probe; FIX=deny_probe_v1;; *) exit 2;; esac
 PROMPT="$(awk '/^```/{f=!f;next} f' "$HERE/$PACK/TASK.md")"
 case $L in F*) A=fx;; *) A=harness;; esac
 TS=$(date +%Y%m%dT%H%M%S); D=$RUNS/$T-trackB-$A-$TAG-$L-$TS; mkdir -p "$D"
