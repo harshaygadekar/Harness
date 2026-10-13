@@ -116,14 +116,28 @@ def main(runs, agent_user):
                         copied.append(f)
                 else:
                     log(f"record {name}: {f} is not a regular benchproxy file; not copied")
-        json.dump({"status": "killed", "reason": "runner did not finish; marked by the next run from a root-owned record",
-                   "logs_copied": copied}, open(os.path.join(d, "killed.json"), "w"), indent=1)
+        safe_write(os.path.join(d, "killed.json"), json.dumps(
+            {"status": "killed", "reason": "runner did not finish; marked by the next run from a root-owned record",
+             "logs_copied": copied}, indent=1).encode())
         pe = os.path.join(d, "run_env.json")
-        if os.path.isfile(pe) and not os.path.islink(pe):
-            try:
-                e = json.load(open(pe)); e["status"] = "killed"; json.dump(e, open(pe, "w"), indent=1)
-            except ValueError:
-                pass
+        try:
+            pst = os.lstat(pe)
+        except FileNotFoundError:
+            pst = None
+        if pst is not None:
+            e = {}
+            if stat.S_ISREG(pst.st_mode):  # read only a regular file, never through a link
+                try:
+                    fd = os.open(pe, os.O_RDONLY | os.O_NOFOLLOW)
+                    with os.fdopen(fd, "rb") as fh:
+                        e = json.loads(fh.read() or b"{}")
+                except (OSError, ValueError):
+                    e = {}
+            else:
+                log(f"record {name}: run_env.json is not a regular file; replaced without reading it")
+            if isinstance(e, dict):
+                e["status"] = "killed"
+                safe_write(pe, json.dumps(e, indent=1).encode())
         if e_ws is None: sudo("rm", "-rf", "--", ws)
         if e_hd is None: sudo("rm", "-rf", "--", hd)
         sudo("rm", "-f", "--", rec)

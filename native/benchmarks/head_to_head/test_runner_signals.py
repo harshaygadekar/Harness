@@ -86,6 +86,12 @@ sent_sha = sha_f(SENT_F.name)
 dst = os.path.join(d, "proxy_usage.jsonl")
 if os.path.lexists(dst): os.unlink(dst)
 os.symlink(SENT_F.name, dst)
+SENT_K = {}
+for nm_ in ("killed.json", "run_env.json"):
+    sf = tempfile.NamedTemporaryFile("w", prefix="sentinel-file-", dir="/tmp", delete=False); sf.write(nm_ + " sentinel\n"); sf.close()
+    dp = os.path.join(d, nm_)
+    if os.path.lexists(dp): os.unlink(dp)
+    os.symlink(sf.name, dp); SENT_K[nm_] = (sf.name, sha_f(sf.name), dp)
 left = (n_agent(), rid(), listening(port))
 check("SIGKILL: state left behind (agents, run id, proxy)", left[0] >= 1 and left[1] != "" and left[2], f"agents={left[0]} rid={left[1]!r} listening={left[2]}")
 p2 = start("H2")
@@ -103,6 +109,10 @@ check("next runner: killed run's proxy usage log copied into its folder", len(ul
 check("rescue: planted symlink at destination did not change the sentinel (sha256)", sha_f(SENT_F.name) == sent_sha)
 check("rescue: destination is now a regular file (not a symlink) with the copied log", os.path.isfile(dst) and not os.path.islink(dst) and len(open(dst).read().splitlines()) >= 1)
 os.unlink(SENT_F.name)
+for nm_, (sf, sh_, dp) in SENT_K.items():
+    check(f"rescue: planted symlink at {nm_} did not change its sentinel (sha256); dst is a regular file",
+          sha_f(sf) == sh_ and os.path.isfile(dp) and not os.path.islink(dp) and json.load(open(dp)).get("status") == "killed")
+    os.unlink(sf)
 check("next runner: killed run's /tmp/benchproxy-* and /tmp/iso-* deleted", hd_k and not os.path.exists(hd_k) and not os.path.exists(ws_k))
 check("next runner: own run id set (old one replaced)", rid() == os.path.basename(d2 or ""), repr(rid()))
 p2.send_signal(signal.SIGTERM); rc2 = p2.wait(60)
