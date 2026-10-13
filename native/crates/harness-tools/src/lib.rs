@@ -6,6 +6,7 @@ mod filesystem;
 pub mod guard;
 mod git;
 mod patch;
+mod safe_fs;
 mod search;
 mod shell;
 mod tests_tool;

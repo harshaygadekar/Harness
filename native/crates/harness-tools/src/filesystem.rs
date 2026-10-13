@@ -124,10 +124,7 @@ impl Tool for WriteFile {
             return Err(ToolError::Failed("content too large (>512 KiB)".into()));
         }
         let path = crate::guard::resolve_write(&self.workspace, rel)?;
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).map_err(|e| ToolError::Failed(e.to_string()))?;
-        }
-        fs::write(&path, content).map_err(|e| ToolError::Failed(e.to_string()))?;
+        crate::safe_fs::write(self.workspace.root(), &path, rel, content.as_bytes(), true)?;
         Ok(ToolResult {
             content: format!("wrote {} bytes to {rel}", content.len()),
             ok: true,

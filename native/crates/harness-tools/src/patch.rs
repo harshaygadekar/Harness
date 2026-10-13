@@ -1,4 +1,3 @@
-use std::fs;
 use std::sync::Arc;
 
 use harness_core::{Tool, ToolError, ToolResult};
@@ -46,7 +45,7 @@ impl Tool for ApplyPatch {
             return Err(ToolError::Failed("old_string empty".into()));
         }
         let path = crate::guard::resolve_write(&self.workspace, rel)?;
-        let text = fs::read_to_string(&path).map_err(|e| ToolError::Failed(e.to_string()))?;
+        let text = crate::safe_fs::read(self.workspace.root(), &path, rel)?;
         let count = text.matches(old).count();
         if count == 0 {
             return Err(ToolError::Failed("old_string not found".into()));
@@ -57,7 +56,7 @@ impl Tool for ApplyPatch {
             )));
         }
         let updated = text.replacen(old, new, 1);
-        fs::write(&path, updated).map_err(|e| ToolError::Failed(e.to_string()))?;
+        crate::safe_fs::write(self.workspace.root(), &path, rel, updated.as_bytes(), false)?;
         Ok(ToolResult {
             content: format!("patched {rel}"),
             ok: true,

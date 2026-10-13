@@ -48,21 +48,10 @@ impl Workspace {
                 other => out.push(other),
             }
         }
-        // Canonicalize the deepest existing ancestor (this resolves links),
-        // then add back ALL the parts that do not exist yet.
-        let joined = if out.exists() {
-            out.canonicalize().map_err(WorkspaceError::Io)?
-        } else {
-            let mut a = out.clone();
-            while !a.exists() {
-                if !a.pop() {
-                    break;
-                }
-            }
-            let tail = out.strip_prefix(&a).map(Path::to_path_buf).unwrap_or_default();
-            let base = a.canonicalize().unwrap_or(a);
-            base.join(tail)
-        };
+        // Resolve every link on the path with symlink_metadata/read_link,
+        // also dangling links and chains. The link text is resolved against
+        // the link's parent folder. Parts that do not exist yet are kept.
+        let joined = resolve_links(&out).ok_or_else(|| WorkspaceError::Escape(rel.to_string()))?;
 
         // Use strip_prefix, not starts_with (Jessie: /tmp/ws vs /tmp/ws_evil).
         if joined.strip_prefix(&self.root).is_err() {
@@ -70,6 +59,46 @@ impl Workspace {
         }
         Ok(joined)
     }
+}
+
+/// Resolve all links in an absolute, normalized path, without needing the
+/// path to exist. Returns None on a link loop (more than 40 links).
+fn resolve_links(path: &Path) -> Option<PathBuf> {
+    use std::path::Component;
+    let mut todo: Vec<std::ffi::OsString> = Vec::new();
+    let push_rev = |todo: &mut Vec<std::ffi::OsString>, p: &Path| {
+        for c in p.components().rev() {
+            todo.push(c.as_os_str().to_os_string());
+        }
+    };
+    push_rev(&mut todo, path);
+    let mut out = PathBuf::new();
+    let mut links = 0;
+    while let Some(c) = todo.pop() {
+        match Path::new(&c).components().next() {
+            Some(Component::RootDir) => out = PathBuf::from("/"),
+            Some(Component::CurDir) | None => {}
+            Some(Component::ParentDir) => {
+                out.pop();
+            }
+            Some(_) => {
+                out.push(&c);
+                let is_link = std::fs::symlink_metadata(&out)
+                    .map(|m| m.file_type().is_symlink())
+                    .unwrap_or(false);
+                if is_link {
+                    links += 1;
+                    if links > 40 {
+                        return None;
+                    }
+                    let target = std::fs::read_link(&out).ok()?;
+                    out.pop(); // the link's parent folder
+                    push_rev(&mut todo, &target); // absolute target resets via RootDir
+                }
+            }
+        }
+    }
+    Some(out)
 }
 
 #[cfg(test)]

@@ -579,3 +579,125 @@ fn write_new_nested_path_lands_in_place() {
 fn write_new_path_through_outside_link_denied() {
     assert_denied("link_new_write", no_setup, "write_file", json!({"path": "link_dir/new/deep/x", "content": "x"}), "path_escape");
 }
+
+// ---------- writes through dangling links (path_escape) ----------
+
+fn dangling_setup(ws: &Path) {
+    let out = ws.parent().unwrap().join("outside");
+    symlink(out.join("new.txt"), ws.join("dl_file")).unwrap(); // dangling file link
+    symlink(out.join("newdir"), ws.join("dl_dir")).unwrap(); // dangling dir link
+    symlink("../outside/rel.txt", ws.join("dl_rel")).unwrap(); // relative link text
+    // Chain: c1 -> c2 -> sub/c3 -> ../../outside/chain.txt (dangling at the end)
+    fs::create_dir_all(ws.join("sub")).unwrap();
+    symlink("../../outside/chain.txt", ws.join("sub/c3")).unwrap();
+    symlink("sub/c3", ws.join("c2")).unwrap();
+    symlink(ws.join("c2"), ws.join("c1")).unwrap();
+    // Chain into a dangling outside dir.
+    symlink("dl_dir", ws.join("c_dir")).unwrap();
+}
+
+const DANGLING_PATHS: [&str; 8] = [
+    "dl_file", "dl_rel", "dl_dir/child.txt", "dl_dir/a/b/child.txt",
+    "c1", "c2", "c_dir/child.txt", "sub/../c1",
+];
+
+fn assert_nothing_new_outside(tag: &str, ws: &Path) {
+    let out = ws.parent().unwrap().join("outside");
+    for p in ["new.txt", "newdir", "rel.txt", "chain.txt"] {
+        assert!(!out.join(p).exists(), "[{tag}] created outside/{p}");
+    }
+}
+
+#[test]
+fn write_through_dangling_links_denied() {
+    for (i, p) in DANGLING_PATHS.into_iter().enumerate() {
+        let tag = format!("dl_w_{i}");
+        assert_denied(&tag, dangling_setup, "write_file", json!({"path": p, "content": "pwn"}), "path_escape");
+        let fx = Fixture::new(&format!("{tag}_x"));
+        dangling_setup(&fx.ws);
+        run_one(&fx, "write_file", json!({"path": p, "content": "pwn"}));
+        assert_nothing_new_outside(&tag, &fx.ws);
+    }
+}
+
+#[test]
+fn patch_through_dangling_links_denied() {
+    for (i, p) in DANGLING_PATHS.into_iter().enumerate() {
+        let tag = format!("dl_p_{i}");
+        assert_denied(&tag, dangling_setup, "apply_patch", json!({"path": p, "old_string": "a", "new_string": "b"}), "path_escape");
+    }
+}
+
+#[test]
+fn write_through_inside_link_chain_allowed() {
+    let fx = Fixture::new("inside_chain");
+    fs::create_dir_all(fx.ws.join("real")).unwrap();
+    symlink("real", fx.ws.join("l2")).unwrap();
+    symlink("l2", fx.ws.join("l1")).unwrap();
+    symlink("l1/new.txt", fx.ws.join("dangling_inside")).unwrap();
+    assert!(run_one(&fx, "write_file", json!({"path": "l1/x/y.txt", "content": "ok"})).0);
+    assert_eq!(fs::read_to_string(fx.ws.join("real/x/y.txt")).unwrap(), "ok");
+    assert!(run_one(&fx, "write_file", json!({"path": "dangling_inside", "content": "ok2"})).0);
+    assert_eq!(fs::read_to_string(fx.ws.join("real/new.txt")).unwrap(), "ok2");
+}
+
+#[test]
+fn link_loop_denied() {
+    let fx = Fixture::new("loop");
+    symlink("loop_b", fx.ws.join("loop_a")).unwrap();
+    symlink("loop_a", fx.ws.join("loop_b")).unwrap();
+    let (ok, _) = run_one(&fx, "write_file", json!({"path": "loop_a", "content": "x"}));
+    assert!(!ok);
+}
+
+// ---------- Jessie's extra dangling-link cases, for every write tool ----------
+
+fn extra_setup(ws: &Path) {
+    let out = ws.parent().unwrap().join("outside");
+    // (a) link to an outside folder that does not exist yet
+    symlink(out.join("notyet"), ws.join("ndir")).unwrap();
+    // (b) chain of 2 links, the last one points outside
+    symlink(out.join("chain2.txt"), ws.join("last")).unwrap();
+    symlink("last", ws.join("first")).unwrap();
+    // (c) link in the middle of a path: a/link/b.txt
+    fs::create_dir_all(ws.join("a")).unwrap();
+    symlink(&out, ws.join("a/link")).unwrap();
+}
+
+const EXTRA_PATHS: [&str; 5] = ["ndir/new.txt", "first", "last", "a/link/b.txt", "a/link/canary.txt"];
+/// Every tool that writes, edits or creates a file (run_shell is out of scope).
+const WRITE_TOOLS: [&str; 2] = ["write_file", "apply_patch"];
+
+fn write_args(tool: &str, p: &str) -> Value {
+    match tool {
+        "write_file" => json!({"path": p, "content": "pwn"}),
+        _ => json!({"path": p, "old_string": "CANARY", "new_string": "pwn"}),
+    }
+}
+
+#[test]
+fn every_write_tool_denies_extra_link_cases() {
+    for tool in WRITE_TOOLS {
+        for (i, p) in EXTRA_PATHS.into_iter().chain(DANGLING_PATHS).enumerate() {
+            let tag = format!("x_{tool}_{i}");
+            let fx = Fixture::new(&tag);
+            extra_setup(&fx.ws);
+            dangling_setup(&fx.ws);
+            let before = fx.snapshot();
+            let (ok, c) = run_one(&fx, tool, write_args(tool, p));
+            assert!(!ok, "[{tag}] {p}: {c}");
+            assert_eq!(harness_tools::deny_code(&c), Some("path_escape"), "[{tag}] {p}: {c}");
+            assert_eq!(before, fx.snapshot(), "[{tag}] outside changed");
+            for n in ["notyet", "chain2.txt", "b.txt", "new.txt", "newdir", "rel.txt", "chain.txt"] {
+                assert!(!fx.outside.join(n).exists(), "[{tag}] made outside/{n}");
+            }
+        }
+    }
+    let names = coding_tool_names(true);
+    for n in &names {
+        assert!(
+            WRITE_TOOLS.contains(n) || ["list_files", "search", "read_file", "run_tests", "git_status", "git_diff", "run_shell"].contains(n),
+            "new tool {n}: add it to WRITE_TOOLS if it writes"
+        );
+    }
+}
