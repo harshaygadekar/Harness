@@ -342,7 +342,7 @@ fn ask_cmd(
     let allow_names = expand_allow(allow, false);
     let runner = build_runner(&allow_names, workspace)?;
 
-    let mut model_retries: Option<(u32, u64)> = None;
+    let mut model_retries: Option<(u32, u64, std::collections::BTreeMap<String, u32>)> = None;
     let mut model_usage: Option<harness_model::UsageTotals> = None;
     let result = match model_name {
         "fake" => {
@@ -363,7 +363,7 @@ fn ask_cmd(
             let mut model =
                 OpenAiCompat::from_env().map_err(|e| format!("openai model: {e}"))?;
             let r = runner.run(&mut model, prompt, RunConfig { max_steps });
-            model_retries = Some((model.retry_count(), model.retry_wait_ms()));
+            model_retries = Some((model.retry_count(), model.retry_wait_ms(), model.retry_reasons()));
             model_usage = Some(model.usage_totals());
             r
         }
@@ -386,8 +386,8 @@ fn ask_cmd(
         source_run_jsonl: path.display().to_string(),
     };
     let mut metrics = aggregate(&result.events, &meta);
-    if let Some((n, wait_ms)) = model_retries {
-        add_retry_metrics(&mut metrics, n, wait_ms);
+    if let Some((n, wait_ms, reasons)) = model_retries {
+        add_retry_metrics(&mut metrics, n, wait_ms, &reasons);
         let _ = fs::write(record_dir.join("model_retries.txt"), format!("{n}\n"));
     }
     if let Some(u) = &model_usage {
@@ -510,10 +510,18 @@ fn replay_cmd(
 }
 
 /// Bench rule: retry backoff wait is reported separately from agent wall time.
-fn add_retry_metrics(metrics: &mut serde_json::Value, retries: u32, wait_ms: u64) {
+/// `model_retries` = {count, wait_ms, reasons{label: n}}; labels only, never error text.
+fn add_retry_metrics(
+    metrics: &mut serde_json::Value,
+    retries: u32,
+    wait_ms: u64,
+    reasons: &std::collections::BTreeMap<String, u32>,
+) {
     if let Some(obj) = metrics.as_object_mut() {
-        obj.insert("model_retries".into(), json!(retries));
-        obj.insert("model_retry_wait_ms".into(), json!(wait_ms));
+        obj.insert(
+            "model_retries".into(),
+            json!({"count": retries, "wait_ms": wait_ms, "reasons": reasons}),
+        );
         if let Some(wall) = obj.get("wall_time_ms").and_then(|v| v.as_u64()) {
             obj.insert(
                 "agent_wall_ms_excl_retry_wait".into(),
@@ -554,9 +562,15 @@ mod retry_metrics_tests {
     #[test]
     fn retry_wait_fields_written() {
         let mut m = json!({"wall_time_ms": 25094});
-        add_retry_metrics(&mut m, 3, 16115);
-        assert_eq!(m["model_retries"], 3);
-        assert_eq!(m["model_retry_wait_ms"], 16115);
+        let mut r = std::collections::BTreeMap::new();
+        r.insert("http_503".to_string(), 2u32);
+        r.insert("connection".to_string(), 1u32);
+        add_retry_metrics(&mut m, 3, 16115, &r);
+        assert_eq!(m["model_retries"]["count"], 3);
+        assert_eq!(m["model_retries"]["wait_ms"], 16115);
+        assert_eq!(m["model_retries"]["reasons"]["http_503"], 2);
+        assert_eq!(m["model_retries"]["reasons"]["connection"], 1);
+        assert_eq!(m["model_retries"].as_object().unwrap().len(), 3);
         assert_eq!(m["agent_wall_ms_excl_retry_wait"], 8979);
     }
 }

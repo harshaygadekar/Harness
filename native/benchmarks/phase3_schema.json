@@ -70,6 +70,26 @@
       "minLength": 1,
       "description": "Git SHA the harness binary was built from (suffix -dirty if built from a modified tree); commit_sha is the cwd repo HEAD at run time"
     },
+    "model_retries": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["count", "wait_ms", "reasons"],
+      "description": "Provider retries in the HTTP model adapter (only 429, 503 and connection errors before any reply byte). Labels and counts only, never error text.",
+      "properties": {
+        "count": { "type": "integer", "minimum": 0 },
+        "wait_ms": { "type": "integer", "minimum": 0 },
+        "reasons": {
+          "type": "object",
+          "propertyNames": { "enum": ["http_429", "http_503", "connection"] },
+          "additionalProperties": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "agent_wall_ms_excl_retry_wait": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "wall_time_ms minus model_retries.wait_ms"
+    },
     "machine_class": {
       "type": "string",
       "minLength": 1

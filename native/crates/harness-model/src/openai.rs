@@ -16,10 +16,12 @@ const DEFAULT_BASE: &str = "https://api.openai.com/v1";
 pub const USER_AGENT: &str = concat!("harness/", env!("CARGO_PKG_VERSION"));
 const DEFAULT_TIMEOUT_SECS: u64 = 60;
 /// Bounded provider retry (outside core): max retries per request.
-pub const MAX_RETRIES: u32 = 3;
+pub const MAX_RETRIES: u32 = 6;
 const DEFAULT_BACKOFF_BASE: Duration = Duration::from_secs(2);
 /// Cap on total added wait across retries of a single request.
-const MAX_TOTAL_RETRY_WAIT: Duration = Duration::from_secs(30);
+const MAX_TOTAL_RETRY_WAIT: Duration = Duration::from_secs(120);
+/// Cap on any single wait (backoff or Retry-After).
+const MAX_EACH_RETRY_WAIT: Duration = Duration::from_secs(30);
 
 /// Retry policy knobs (tests shrink the backoff base).
 #[derive(Clone, Debug)]
@@ -27,6 +29,7 @@ pub struct RetryPolicy {
     pub max_retries: u32,
     pub backoff_base: Duration,
     pub max_total_wait: Duration,
+    pub max_each_wait: Duration,
 }
 
 impl Default for RetryPolicy {
@@ -35,12 +38,19 @@ impl Default for RetryPolicy {
             max_retries: MAX_RETRIES,
             backoff_base: DEFAULT_BACKOFF_BASE,
             max_total_wait: MAX_TOTAL_RETRY_WAIT,
+            max_each_wait: MAX_EACH_RETRY_WAIT,
         }
     }
 }
 
+/// Gate (Jessie): retry only 429 and 503 among statuses; never other 4xx/5xx.
 fn is_retryable_status(code: u16) -> bool {
-    matches!(code, 429 | 500 | 502 | 503 | 504)
+    matches!(code, 429 | 503)
+}
+
+/// Retry reason label for metrics (no error text).
+fn status_reason(code: u16) -> &'static str {
+    if code == 429 { "http_429" } else { "http_503" }
 }
 
 /// Small jitter (0..=25% of d) without pulling a rand dependency.
@@ -62,7 +72,8 @@ fn parse_retry_after(v: Option<&str>) -> Option<Duration> {
 
 enum Attempt {
     Done(Result<ModelResponse, OpenAiError>),
-    Retry(OpenAiError, Option<Duration>),
+    /// Error, Retry-After, reason label. Only produced before any reply byte arrived.
+    Retry(OpenAiError, Option<Duration>, &'static str),
 }
 
 #[derive(Debug, Error)]
@@ -86,6 +97,7 @@ pub struct OpenAiCompat {
     retry: RetryPolicy,
     retries: Arc<AtomicU32>,
     retry_wait_ms: Arc<AtomicU64>,
+    retry_reasons: Arc<std::sync::Mutex<std::collections::BTreeMap<&'static str, u32>>>,
     usage: Arc<std::sync::Mutex<UsageTotals>>,
 }
 
@@ -190,6 +202,7 @@ impl OpenAiCompat {
             retry: RetryPolicy::default(),
             retries: Arc::new(AtomicU32::new(0)),
             retry_wait_ms: Arc::new(AtomicU64::new(0)),
+            retry_reasons: Arc::default(),
             usage: Arc::default(),
         })
     }
@@ -203,6 +216,7 @@ impl OpenAiCompat {
             retry: RetryPolicy::default(),
             retries: Arc::new(AtomicU32::new(0)),
             retry_wait_ms: Arc::new(AtomicU64::new(0)),
+            retry_reasons: Arc::default(),
             usage: Arc::default(),
         }
     }
@@ -225,6 +239,14 @@ impl OpenAiCompat {
     /// Total measured backoff sleep (ms) across all retries of this client.
     pub fn retry_wait_ms(&self) -> u64 {
         self.retry_wait_ms.load(Ordering::Relaxed)
+    }
+
+    /// Retry count per reason label (http_429, http_503, connection).
+    pub fn retry_reasons(&self) -> std::collections::BTreeMap<String, u32> {
+        self.retry_reasons
+            .lock()
+            .map(|m| m.iter().map(|(k, v)| (k.to_string(), *v)).collect())
+            .unwrap_or_default()
     }
 
     /// Summed token usage reported by the provider across all responses.
@@ -264,12 +286,12 @@ impl OpenAiCompat {
         loop {
             match self.attempt_once(&agent, &url, &body) {
                 Attempt::Done(r) => return r,
-                Attempt::Retry(err, retry_after) => {
+                Attempt::Retry(err, retry_after, reason) => {
                     if attempt >= self.retry.max_retries {
                         return Err(err);
                     }
                     let backoff = jitter(self.retry.backoff_base * 2u32.pow(attempt));
-                    let mut wait = retry_after.unwrap_or(backoff);
+                    let mut wait = retry_after.unwrap_or(backoff).min(self.retry.max_each_wait);
                     let remaining = self.retry.max_total_wait.saturating_sub(waited);
                     if remaining.is_zero() {
                         return Err(err);
@@ -292,6 +314,9 @@ impl OpenAiCompat {
                     waited += wait;
                     attempt += 1;
                     self.retries.fetch_add(1, Ordering::Relaxed);
+                    if let Ok(mut m) = self.retry_reasons.lock() {
+                        *m.entry(reason).or_insert(0) += 1;
+                    }
                 }
             }
         }
@@ -313,19 +338,20 @@ impl OpenAiCompat {
                 let body = scrub_http_body(&body);
                 let err = OpenAiError::Http(format!("status {code}: {body}"));
                 return if is_retryable_status(code) {
-                    Attempt::Retry(err, retry_after)
+                    Attempt::Retry(err, retry_after, status_reason(code))
                 } else {
                     Attempt::Done(Err(err))
                 };
             }
-            // Transport: connect error, DNS, timeout, reset — all retryable.
-            Err(e) => return Attempt::Retry(OpenAiError::Http(e.to_string()), None),
+            // Transport before a status line was parsed (connect, DNS, reset, status-line
+            // timeout): no reply bytes reached us, so a retry is allowed.
+            Err(e) => return Attempt::Retry(OpenAiError::Http(e.to_string()), None, "connection"),
         };
 
-        // Read timeouts can also surface while reading the body.
+        // A break while reading the body happens after reply bytes arrived: never retry.
         let text = match resp.into_string() {
             Ok(t) => t,
-            Err(e) => return Attempt::Retry(OpenAiError::Http(format!("read body: {e}")), None),
+            Err(e) => return Attempt::Done(Err(OpenAiError::Http(format!("read body: {e}")))),
         };
         if let Some(u) = parse_usage(&text) {
             if let Ok(mut t) = self.usage.lock() {
@@ -580,6 +606,7 @@ mod retry_tests {
             max_retries: 3,
             backoff_base: Duration::from_millis(5),
             max_total_wait: Duration::from_secs(5),
+            max_each_wait: Duration::from_secs(5),
         })
     }
 
@@ -591,6 +618,7 @@ mod retry_tests {
         assert_eq!(r.message.content.as_deref(), Some("hi"));
         assert_eq!(*hits.lock().unwrap(), 2);
         assert_eq!(c.retry_count(), 1);
+        assert_eq!(c.retry_reasons().get("http_503"), Some(&1));
     }
 
     #[test]
@@ -643,12 +671,14 @@ mod retry_tests {
 
     #[test]
     fn gives_up_after_max_retries() {
-        let (base, hits) = serve(vec![(503, "{}"), (502, "{}"), (429, "{}"), (500, "{}"), (200, OK_BODY)]);
+        let (base, hits) = serve(vec![(503, "{}"), (429, "{}"), (503, "{}"), (503, "{}"), (200, OK_BODY)]);
         let c = client(&base);
         let e = c.complete_inner(&[], &[]).unwrap_err().to_string();
-        assert!(e.contains("status 500"), "{e}");
+        assert!(e.contains("status 503"), "{e}");
         assert_eq!(*hits.lock().unwrap(), 4);
         assert_eq!(c.retry_count(), 3);
+        let r = c.retry_reasons();
+        assert_eq!((r.get("http_503"), r.get("http_429")), (Some(&2), Some(&1)));
     }
 
     #[test]
@@ -732,6 +762,7 @@ mod retry_tests {
             max_retries: 3,
             backoff_base: Duration::from_millis(50),
             max_total_wait: Duration::from_secs(5),
+            max_each_wait: Duration::from_secs(5),
         });
         assert_eq!(c.retry_wait_ms(), 0);
         c.complete_inner(&[], &[]).unwrap();
@@ -824,7 +855,106 @@ mod retry_tests {
         assert_eq!(parse_retry_after(Some("7")), Some(Duration::from_secs(7)));
         assert_eq!(parse_retry_after(Some("Wed, 21 Oct")), None);
         assert!(!is_retryable_status(404));
-        assert!(is_retryable_status(504));
+        assert!(!is_retryable_status(500));
+        assert!(!is_retryable_status(502));
+        assert!(!is_retryable_status(504));
+        assert!(is_retryable_status(503));
+        assert!(is_retryable_status(429));
+    }
+
+    #[test]
+    fn no_retry_on_other_4xx_and_5xx() {
+        for code in [401u16, 403, 404, 408, 422, 500, 502, 504] {
+            let (base, hits) = serve(vec![(code, "{}"), (200, OK_BODY)]);
+            let c = client(&base);
+            assert!(c.complete_inner(&[], &[]).is_err(), "{code}");
+            assert_eq!(*hits.lock().unwrap(), 1, "{code}");
+            assert_eq!(c.retry_count(), 0, "{code}");
+        }
+    }
+
+    #[test]
+    fn retry_after_honored_and_capped() {
+        // 503 with Retry-After: 1 -> waits ~1s (not the 5ms backoff); cap below it limits the wait.
+        fn serve_ra(ra: &'static str) -> String {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let addr = listener.local_addr().unwrap();
+            std::thread::spawn(move || {
+                for i in 0..2 {
+                    let Ok((mut s, _)) = listener.accept() else { return };
+                    let mut r = BufReader::new(s.try_clone().unwrap());
+                    let mut len = 0usize;
+                    loop {
+                        let mut line = String::new();
+                        if r.read_line(&mut line).unwrap_or(0) == 0 || line == "\r\n" { break; }
+                        if let Some(v) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                            len = v.trim().parse().unwrap();
+                        }
+                    }
+                    let mut buf = vec![0u8; len];
+                    let _ = r.read_exact(&mut buf);
+                    let resp = if i == 0 {
+                        format!("HTTP/1.1 503 X\r\nRetry-After: {ra}\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}")
+                    } else {
+                        format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{OK_BODY}", OK_BODY.len())
+                    };
+                    let _ = s.write_all(resp.as_bytes());
+                }
+            });
+            format!("http://{addr}")
+        }
+        let c = client(&serve_ra("1"));
+        c.complete_inner(&[], &[]).unwrap();
+        assert!((900..2000).contains(&c.retry_wait_ms()), "{}", c.retry_wait_ms());
+        let c = OpenAiCompat::new("test-key", &serve_ra("60"), "m").with_retry_policy(RetryPolicy {
+            max_retries: 3,
+            backoff_base: Duration::from_millis(5),
+            max_total_wait: Duration::from_secs(5),
+            max_each_wait: Duration::from_millis(200),
+        });
+        c.complete_inner(&[], &[]).unwrap();
+        assert!(c.retry_wait_ms() < 1000, "{}", c.retry_wait_ms());
+    }
+
+    #[test]
+    fn no_retry_on_mid_body_break() {
+        // Status 200 + headers arrive, then the body is cut short: reply bytes arrived, so no retry.
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let hits = Arc::new(Mutex::new(0u32));
+        let h = hits.clone();
+        std::thread::spawn(move || {
+            for _ in 0..2 {
+                let Ok((mut s, _)) = listener.accept() else { return };
+                let mut r = BufReader::new(s.try_clone().unwrap());
+                let mut len = 0usize;
+                loop {
+                    let mut line = String::new();
+                    if r.read_line(&mut line).unwrap_or(0) == 0 || line == "\r\n" { break; }
+                    if let Some(v) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                        len = v.trim().parse().unwrap();
+                    }
+                }
+                let mut buf = vec![0u8; len];
+                let _ = r.read_exact(&mut buf);
+                *h.lock().unwrap() += 1;
+                let _ = s.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 500\r\nConnection: close\r\n\r\n{\"choices\":[");
+                drop(s);
+            }
+        });
+        let c = client(&format!("http://{addr}"));
+        let e = c.complete_inner(&[], &[]).unwrap_err().to_string();
+        assert!(e.contains("read body"), "{e}");
+        assert_eq!(*hits.lock().unwrap(), 1);
+        assert_eq!(c.retry_count(), 0);
+    }
+
+    #[test]
+    fn connection_error_reason_recorded() {
+        let addr = TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap();
+        let c = client(&format!("http://{addr}"));
+        assert!(c.complete_inner(&[], &[]).is_err());
+        assert_eq!(c.retry_reasons().get("connection"), Some(&3));
     }
 }
 
