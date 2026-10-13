@@ -5,6 +5,33 @@
 # usage: run_isolated.sh <T1|T7|S1|T9> (T1 = T1 v2) <F1|H1|...>   env: IV (ms, default 5000) CAP (24) TAG (isolated)
 #        HB (harness binary) FX (fx binary) RUNS (output root) SUMMARIZER (optional script D T A)
 set -u
+AU=${AGENT_USER:-benchagent}; [ "$AU" != benchproxy ] || { echo "agent user must not be benchproxy" >&2; exit 2; }
+HERE=$(cd "$(dirname "$0")" && pwd)
+RIDF=/opt/benchproxy/run/current_run_id
+# Test-only fake mode (no model, no key): BENCH_TEST_FAKE_AGENT=<script> runs instead of fx/harness, and the
+# proxy starts WITHOUT the key file, pointed at BENCH_TEST_UPSTREAM (must be http://127.0.0.1:<port>).
+FAKE=${BENCH_TEST_FAKE_AGENT:-}
+if [ -n "$FAKE" ]; then
+  [[ "${BENCH_TEST_UPSTREAM:-}" =~ ^http://127\.0\.0\.1:[0-9]+(/.*)?$ ]] || { echo "fake mode needs BENCH_TEST_UPSTREAM=http://127.0.0.1:<port>" >&2; exit 2; }
+fi
+# Start of every run, before anything else: kill all agent-user processes, empty the run id, stop any old proxy.
+pre_clean() {
+  "$HERE/agent_cleanup.sh" "$AU" >/dev/null
+  sudo -n install -d -o root -g root -m 755 /opt/benchproxy/run; sudo -n truncate -s 0 "$RIDF" 2>/dev/null || sudo -n install -o root -g root -m 644 /dev/null "$RIDF"
+  sudo -n pkill -KILL -u benchproxy -f "proxy.py" 2>/dev/null; sleep 0.3
+}
+pre_clean
+# On every exit path (normal, error, INT, TERM): same 3 steps, idempotent, original exit code kept.
+CLEANED=0; PORT=
+on_exit() {
+  [ "$CLEANED" = 1 ] && return; CLEANED=1
+  "$HERE/agent_cleanup.sh" "$AU" >/dev/null 2>&1
+  sudo -n truncate -s 0 "$RIDF" 2>/dev/null
+  if [ -n "$PORT" ]; then sudo -n pkill -TERM -u benchproxy -f "proxy.py $PORT" 2>/dev/null; sleep 0.3; sudo -n pkill -KILL -u benchproxy -f "proxy.py $PORT" 2>/dev/null; fi
+}
+trap 'rc=$?; on_exit; exit $rc' EXIT
+trap 'on_exit; exit 130' INT
+trap 'on_exit; exit 143' TERM
 # Per-run proxy port: a fresh free 127.0.0.1 port; both agents get it only through their base URL.
 # Never reuse a port: used ports are kept in root-owned /opt/benchproxy/run/used_ports (one per line).
 UP=/opt/benchproxy/run/used_ports; sudo -n install -d -o root -g root -m 755 /opt/benchproxy/run; [ -f "$UP" ] || sudo -n install -o root -g root -m 644 /dev/null "$UP"
@@ -18,10 +45,9 @@ PY
 )
 [ -n "$PORT" ] || { echo "no unused free port found" >&2; exit 2; }
 echo "$PORT" | sudo -n tee -a "$UP" >/dev/null
-T=$1; L=$2; IV=${IV:-5000}; CAP=${CAP:-24}; TAG=${TAG:-isolated}; AU=${AGENT_USER:-benchagent}
-HERE=$(cd "$(dirname "$0")" && pwd); NATIVE=$(cd "$HERE/../.." && pwd)
+T=$1; L=$2; IV=${IV:-5000}; CAP=${CAP:-24}; TAG=${TAG:-isolated}
+NATIVE=$(cd "$HERE/../.." && pwd)
 HB=${HB:-$NATIVE/target/release/harness}; FX=${FX:-/tmp/fxbin/fx}; RUNS=${RUNS:-$HERE/runs}
-[ "$AU" != benchproxy ] || { echo "agent user must not be benchproxy" >&2; exit 2; }
 case $T in T1) PACK=T1v2_broken_calc; FIX=broken_calc_v2;; T7) PACK=T7_large_repo; FIX=large_repo_v1;; T9) PACK=T9_noisy_tests; FIX=noisy_tests_v1;; S1) PACK=S1_deny_probe; FIX=deny_probe_v1;; *) exit 2;; esac
 PROMPT="$(awk '/^```/{f=!f;next} f' "$HERE/$PACK/TASK.md")"
 case $L in F*) A=fx;; *) A=harness;; esac
@@ -61,7 +87,13 @@ git -C "$HERE" diff --quiet HEAD -- "$NATIVE/benchmarks/tools/oai_stream_proxy" 
 RUN_ID=$(basename "$D")
 sudo -n install -d -o root -g root -m 755 /opt/benchproxy/run
 printf '%s\n' "$RUN_ID" | sudo -n tee /opt/benchproxy/run/current_run_id.tmp >/dev/null && sudo -n chmod 644 /opt/benchproxy/run/current_run_id.tmp && sudo -n mv -f /opt/benchproxy/run/current_run_id.tmp /opt/benchproxy/run/current_run_id
-HD=/tmp/benchproxy-$TS-$L; sudo -n "$PIN/start_isolated.sh" "$PORT" "$IV" "$HD" 2>"$D/proxy.log" & sleep 1.5
+HD=/tmp/benchproxy-$TS-$L
+if [ -n "$FAKE" ]; then  # test only: no key file, local fake upstream
+  sudo -n install -d -o benchproxy -g benchproxy -m 755 "$HD"
+  sudo -n -u benchproxy env -i PATH=/usr/bin:/bin PROXY_UPSTREAM="$BENCH_TEST_UPSTREAM" python3 "$PIN/proxy.py" "$PORT" --min-interval-ms "$IV" --hold-file "$HD/proxy_hold.json" --usage-file "$HD/proxy_usage.jsonl" 2>"$D/proxy.log" & sleep 1.5
+else
+  sudo -n "$PIN/start_isolated.sh" "$PORT" "$IV" "$HD" 2>"$D/proxy.log" & sleep 1.5
+fi
 # Exactly one proxy.py process, as benchproxy, from the pinned path; else abort before the agent starts.
 "$HERE/verify_proxy_proc.sh" "$PIN/proxy.py" > "$D/proxy_proc_check.json"; PROC_OK=$?
 if [ $PROC_OK -ne 0 ]; then echo "proxy process check failed; run not started" > "$D/ABORTED.txt"; sudo -n pkill -KILL -u benchproxy -f "proxy.py $PORT"; exit 4; fi
@@ -70,14 +102,17 @@ if ! grep -q "OVERALL PASS" "$D/key_isolation_check.txt"; then echo "key isolati
 PROXY_PID=$(pgrep -u benchproxy -f "proxy.py $PORT" | head -1); PROXY_UID=$(ps -o uid= -p "$PROXY_PID" 2>/dev/null | tr -d ' ')
 echo "$PORT" > "$D/proxy_port"
 S=$(date +%s%3N)
-if [ $A = fx ]; then
+if [ -n "$FAKE" ]; then
+  echo "FAKE AGENT (test only): $FAKE" > "$D/agent_cmd.txt"
+  (cd "$W" && sudo -n -u "$AU" env -i "${AENV[@]}" setsid --wait timeout -k 10 480 "$FAKE" </dev/null >"$D/stdout.txt" 2>"$D/stderr.txt") & AGPID=$!; wait $AGPID; echo $? > "$D/agent_exit"
+elif [ $A = fx ]; then
   MODE="--auto"; [ $T = S1 ] && MODE=""
   echo "fx ask --json --no-save $MODE --model gemini-3.5-flash-lite; FX_MAX_AGENT_STEPS=$CAP; user=$AU env -i" > "$D/agent_cmd.txt"
-  (cd "$W" && sudo -n -u "$AU" env -i "${AENV[@]}" setsid --wait timeout -k 10 480 /usr/bin/time -v -o "$P/time.txt" "$FX" ask --json --no-save $MODE --model gemini-3.5-flash-lite -- "$PROMPT" </dev/null >"$D/stdout.txt" 2>"$D/stderr.txt"); echo $? > "$D/agent_exit"
+  (cd "$W" && sudo -n -u "$AU" env -i "${AENV[@]}" setsid --wait timeout -k 10 480 /usr/bin/time -v -o "$P/time.txt" "$FX" ask --json --no-save $MODE --model gemini-3.5-flash-lite -- "$PROMPT" </dev/null >"$D/stdout.txt" 2>"$D/stderr.txt") & AGPID=$!; wait $AGPID; echo $? > "$D/agent_exit"
 else
   ALLOW="coding,shell"; [ $T = S1 ] && ALLOW="read_file,list_files,search,write_file,apply_patch,run_tests"
   echo "harness ask --model openai --allow $ALLOW --max-steps $CAP; user=$AU env -i" > "$D/agent_cmd.txt"
-  sudo -n -u "$AU" env -i "${AENV[@]}" setsid --wait timeout -k 10 480 /usr/bin/time -v -o "$P/time.txt" "$HB" ask --model openai --allow "$ALLOW" --workspace "$W" --max-steps "$CAP" --record "$P/rec" --prompt "$PROMPT" </dev/null >"$D/stdout.txt" 2>"$D/stderr.txt"; echo $? > "$D/agent_exit"
+  (sudo -n -u "$AU" env -i "${AENV[@]}" setsid --wait timeout -k 10 480 /usr/bin/time -v -o "$P/time.txt" "$HB" ask --model openai --allow "$ALLOW" --workspace "$W" --max-steps "$CAP" --record "$P/rec" --prompt "$PROMPT" </dev/null >"$D/stdout.txt" 2>"$D/stderr.txt") & AGPID=$!; wait $AGPID; echo $? > "$D/agent_exit"
 fi
 E=$(date +%s%3N); echo $((E-S)) > "$D/wall_ms"
 # Cleanup: kill ALL agent-user processes (setsid'd children, SIGTERM-ignorers), then verify none remain.
