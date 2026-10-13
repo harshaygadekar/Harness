@@ -14,12 +14,18 @@ The operating system enforces the boundary. Text matching does not.
 1. Landlock (Linux kernel file-access limits). The box kernel is 6.12 and Landlock is active.
    - The shell child process applies a Landlock rule set before `exec`.
    - Read and write: the workspace only.
-   - Read and execute: the system tool folders (`/usr`, `/bin`, `/lib*`, `/etc` read-only), the Rust toolchain folders, and `/tmp` under a private folder per run.
-   - No access: home folders, `/proc/*/environ` of other processes, the key file, `/opt/benchproxy`.
-   - `.env` and `.git` stay protected by the file tools. In the shell, `.git` is read-only if Landlock can express it; if not, it is a known limit.
-   - Network (Landlock ABI 4+): allow TCP connect only to the proxy port on 127.0.0.1, or deny all. Default: deny all.
+   - Read and write: a private `/tmp` folder for each run.
+   - Read and execute: the system tool folders (`/usr`, `/bin`, `/lib*`, `/etc` read-only) and the Rust toolchain folders.
+   - No access: home folders, the key file, `/opt/benchproxy`.
+   - Landlock can only add access. It cannot remove access to a path inside the workspace. So:
+     - `.env`: no secrets live in the agent's workspace. Runs use a clean copy with no `.env`. The shell `.env` cases count as passing only because no `.env` exists, and the doc says so.
+     - `.git`: shell writes to `.git` stay possible. This is a known limit. Those cases stay failing and are not counted as passing.
+   - Other processes' environment (`/proc/*/environ`): Landlock does not protect `/proc`. The protection is that the agent runs as `benchagent` and the proxy runs as `benchproxy`. The `ps` check and the user check in `run_isolated.sh` stay required.
+   - Network: deny TCP bind and connect (ABI 4) and use the ABI 6 scopes (signals and abstract UNIX sockets). UDP is not controlled by Landlock and stays open. This is a known limit.
+   - Crates: download them before the run and set `CARGO_NET_OFFLINE=true`.
+   - Hard mode only: require full support for the ABI level we use. If the kernel supports less, the shell turns off. The crate's best-effort mode is not allowed.
 2. Environment: the shell starts with `env -i` plus a short allow list (`PATH`, `HOME` set to the workspace, `LANG`, `CARGO_HOME`). No keys.
-3. Process limits: own process group, kill the group on timeout (closes the open process-kill gap), and `PR_SET_NO_NEW_PRIVS`.
+3. Process limits: `PR_SET_NO_NEW_PRIVS`. A command can call `setsid` and leave its process group, so a group kill is not enough. The tool uses `PR_SET_CHILD_SUBREAPER` (or a cgroup where one is available) and kills every process under it on timeout. This closes the open process-kill gap.
 4. Fail closed: if the kernel has no Landlock, `run_shell` is turned off and the run records `shell_sandbox=unavailable`. It never falls back to the deny list.
 5. The deny list stays only as a guard against mistakes. It is not called a boundary in docs or reports.
 
@@ -34,7 +40,9 @@ The operating system enforces the boundary. Text matching does not.
 - The root swap above the workspace stays a known limit. Landlock covers it for the shell.
 
 ## Pass conditions
-- All 17 shell escape cases in `sandbox_escapes` pass with the sandbox on.
+- The shell escape cases in `sandbox_escapes` pass with the sandbox on, except the `.git` write cases, which stay listed as a known limit.
+- A test with a lower Landlock version proves that the shell turns off.
+- A test where a command calls `setsid` and then sleeps proves that the timeout kills it.
 - Full suite passes. `harness-core` diff is empty.
 - A test proves fail-closed: with Landlock forced off, `run_shell` refuses to run.
 - `cargo test` still runs inside the sandbox on T1 v2, T7 and T9 fixtures (no false blocks).
