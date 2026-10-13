@@ -207,6 +207,35 @@ class AllowListAndAuthTests(unittest.TestCase):
         for m in ("MARKER_ERR_BODY", "MARKER_ERR_AUTH", "fake-test-key-123", "Connection", "refused"):
             self.assertNotIn(m, raw)
 
+    def test_no_run_gate_returns_503_and_logs_times_only(self):
+        self.seen.clear()
+        for content in ("", "  \n"):
+            open(self.runid_path, "w").write(content)
+            open(self.usage_path, "w").close()
+            try:
+                st = self.req("POST", "/chat/completions", body=b'{"model":"m","messages":[],"x":"MARKER_NORUN_BODY"}', auth="Bearer MARKER_NORUN_AUTH")
+            finally:
+                open(self.runid_path, "w").write("T7-run-A\n")
+            self.assertEqual(st, 503)
+            self.assertEqual(self.seen, [])  # never forwarded upstream
+            rows = [json.loads(l) for l in open(self.usage_path)]
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(set(rows[0]), {"status", "start_ms", "end_ms", "dur_ms"})
+            self.assertEqual(rows[0]["status"], "no_run")
+            raw = open(self.usage_path).read()
+            for m in ("MARKER_NORUN_BODY", "MARKER_NORUN_AUTH", "fake-test-key-123"):
+                self.assertNotIn(m, raw)
+        # Missing file is also "no run".
+        saved = proxy.RUN_ID_FILE
+        proxy.RUN_ID_FILE = self.runid_path + ".missing"
+        try:
+            self.assertEqual(self.req("POST", "/chat/completions", body=b"{}"), 503)
+        finally:
+            proxy.RUN_ID_FILE = saved
+        self.assertEqual(self.seen, [])
+        # With a run id set again, requests forward normally.
+        self.assertEqual(self.req("POST", "/chat/completions", body=b'{"model":"m","messages":[]}'), 200)
+
     def test_other_paths_404_without_upstream_call(self):
         self.seen.clear()
         for m, p in [("GET", "/models"), ("GET", "/v1beta/models"), ("POST", "/embeddings"),

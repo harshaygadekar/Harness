@@ -206,6 +206,26 @@ def _now_ms():
     return int(time.time() * 1000)
 
 
+def no_active_run():
+    """True when the operator's run-id file is empty or missing: the runner cleared it at run end."""
+    try:
+        with open(RUN_ID_FILE) as f:
+            return f.read(200).strip() == ""
+    except OSError:
+        return True
+
+
+def log_no_run(start_ms):
+    """Request outside any run: status "no_run" plus times; nothing else."""
+    if not USAGE_FILE:
+        return
+    end = _now_ms()
+    line = json.dumps({"status": "no_run", "start_ms": start_ms, "end_ms": end, "dur_ms": end - start_ms}) + "\n"
+    with _USAGE_LOCK:
+        with open(USAGE_FILE, "a") as f:
+            f.write(line)
+
+
 def usage_record(status, usage, stream, start_ms=None, end_ms=None):
     """Counts-only record: never bodies, headers or keys. start_ms = upstream send (after pacing), end_ms = response fully relayed."""
     u = usage if isinstance(usage, dict) else {}
@@ -293,8 +313,17 @@ class H(BaseHTTPRequestHandler):
         pass
 
     def _fwd(self):
+        t_in = _now_ms()
         n = int(self.headers.get("Content-Length") or 0)
         body = self.rfile.read(n) if n else None
+        if no_active_run():
+            # No run is active (run-id file empty): never forward upstream; 503 locally, times-only log row.
+            log_no_run(t_in)
+            self.send_response(503)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            self.close_connection = True
+            return
         if body:
             try:
                 body = json.dumps(rewrite_request(json.loads(body))).encode()
