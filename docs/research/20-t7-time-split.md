@@ -3,6 +3,8 @@
 Label: weak model (Gemini Flash-Lite) through the proxy.
 
 Runs: `native/benchmarks/head_to_head/runs/T7-trackB-{fx,harness}-isolated-cap50-*-20261012T17*` (3 per agent; the 2 ABORTED fx attempts are not used). Results doc: `docs/benchmarks/first-head-to-head.md` (T7 cap50 section).
+
+Stray-process scan (Mike, 2026-10-13): all T7 cap50 runs F1-F3 and H1-H3 are clear. Build `92b84dc`.
 Script: `native/benchmarks/tools/time_split.py RUN_DIR...` (tests: `test_time_split.py`). No model was called for this study.
 
 ## 1. Method
@@ -30,7 +32,7 @@ fx upstream counts include `--auto` review requests (2-4 per run). fx token numb
 | Harness H3 | 295,945 | 77,039 | 216,088 | 2,021 | 756 | 41 | 21 | 20 | 15 | 10,290 | 35.0 |
 
 \* inferred (includes fx overhead). fx "agent req" = steps + 1 (not verified). All runs passed the oracle.
-Medians: wall fx 105,900 vs Harness 295,945. Hold fx 71,299 vs Harness 77,039. Model fx 29,704 vs Harness 223,093. Tool fx 814 vs Harness 1,269.
+Medians: wall fx 105,900 vs Harness 295,945. Hold fx 71,299 vs Harness 77,039. Model fx 29,704 (inferred) vs Harness 223,093. Tool fx 814 vs Harness 1,269.
 
 ## 3. One long request per run
 
@@ -43,9 +45,9 @@ Most requests (Harness and fx) end 4-5 s after the previous one. That is the 5 s
 
 The long requests had short outputs (10-24 tokens). Thus long outputs do not explain them. They are slow upstream answers (Gemini side or network). We cannot see inside the upstream.
 
-## 4. Conclusion: what makes the 3x gap
+## 4. Conclusion: what makes the wall-time gap (not interleaved)
 
-- Main cause: slower requests, from a few upstream stalls. The model-wait part (b) differs by about 190 s at the median (223 s vs 30 s), and this is nearly all the wall gap (296 s vs 106 s). In H1 and H3, one request of 200-255 s gives most of it. In H2, many slow requests and 503 retries give it.
+- Main cause: slower requests, from a few upstream stalls. The model-wait part (b) differs by about 190 s at the median (223 s vs about 30 s, fx value inferred), and this is nearly all the wall gap (296 s vs 106 s). In H1 and H3, one request of 200-255 s gives most of it. In H2, many slow requests and 503 retries give it.
 - Second cause: more requests. Harness sent 21-42 requests; fx 17-22. With the 5 s pacing floor, each extra request costs about 5 s. Pacing hold itself is similar (median 77 s vs 71 s), except H1 (131 s, 33 requests).
 - Not a cause: 429s (none), tool time (about 1-2 s per run for both), Harness overhead (below 50 ms).
 - Confounder: the runs were not interleaved. fx ran 22:38-22:46 IST and Harness 22:46-23:08 IST on 2026-10-12. The upstream can be slower at a different time (H2 got 503s). Thus the stalls may come from the time of the run, not from the agent. This is inferred, not verified.
