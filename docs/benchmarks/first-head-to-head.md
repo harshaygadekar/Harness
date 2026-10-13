@@ -707,11 +707,36 @@ Order: F1 and F2 ran first in the old order and are marked **not interleaved**. 
 
 | run | order | oracle success | stop reason | wall ms | proxy pacing hold ms | wall minus hold ms | tool calls | self in/out tok | proxy req (status) | proxy in/out tok | first edit | list/search/read | peak RSS KB |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| F1 | not interleaved | no | fx timeout 480 s (exit 124, no JSON) | 480009 | 9106 | 470903 | 0 | n/a | 14 (200×7, 503×7) | 28492 / 150 | none | 0/0/0 | n/a |
-| F2 | not interleaved | no | fx timeout 480 s (exit 124, no JSON) | 480006 | 10638 | 469368 | 0 | n/a | 17 (200×12, 503×4, 400×1) | 54341 / 239 | none | 0/0/0 | n/a |
-| H1 | interleaved | no | stopped on 503, no retry left (3/3 used; 5 retries in total) | 223288 | 6981 | 216307 | 1 | 620 / 10 | 8 (200×2, 503×5, 400×1) | 1289 / 10 | none | 1/0/0 | 4320 |
+| F1 | not interleaved | no | fx timeout 480 s (exit 124, no JSON) | 480009 | 9106 | 470903 | 0 | n/a | 15 (200×7, 503×7, 400×1†) | 28492 / 150 | none | 0/0/0 | n/a |
+| F2 | not interleaved | no | fx timeout 480 s (exit 124, no JSON) | 480006 | 10638 | 469368 | 0 | n/a | 17 (200×12, 503×4, 400×1†) | 54341 / 239 | none | 0/0/0 | n/a |
+| H1 | interleaved | no | stopped on 503, no retry left (3/3 used; 5 retries in total) | 223288 | 6981 | 216307 | 1 | 620 / 10 | 7 (200×2, 503×5) | 1289 / 10 | none | 1/0/0 | 4320 |
 | F3 | interleaved | yes | exit 0 | 659493 | 62778 | 596715 | 22 | 151199 / 1404 | 28 (200×26, 503×2) | 166604 / 1486 | 14 | 2/0/9 | 140832 |
 
 About the split: "pacing hold" is the time the proxy held requests to keep the 5 s spacing. "Wall minus hold" still includes upstream latency and retry back-off, because the reviewed proxy does not record per-request start and end times.
 
 These runs are not valid for comparison: upstream 503s dominate them. Rerun the set when upstream is stable.
+
+† **Stray requests moved to the run that sent them.** Each of the two 400s came from the previous run's fx process, which the 480 s timeout did not kill. While no proxy was up, the stray fx kept retrying. When the next run's fresh proxy started, the stray's next request reached it, and that proxy no longer had the cached thought_signatures, so Gemini answered 400. The fx then exited. The proxy logged each 400 under the run that was active then.
+- The 400 at 16:33:21 UTC was logged under F2. F1's stderr was last written at 16:33:21.087, so it belongs to F1.
+- The 400 at 16:49:08 UTC was logged under H1. F2's stderr was last written at 16:49:08.776, so it belongs to F2.
+
+The columns now show each request under the run that sent it. F2 loses its own early 400 and gains the stray one, so its total stays 17. These 400s carried no tokens, so token totals are unchanged.
+
+Runner fix, chore/key-isolation 46eb574 and 7946579:
+- The agent now runs in its own session (setsid).
+- After each run, every benchagent process is killed with SIGKILL in a loop, and the run aborts if any is left.
+- An EXIT/INT/TERM trap, plus the same steps at run start, kill all benchagent processes, empty the run id and stop the proxy.
+- Each run gets a new 127.0.0.1 port that is never reused.
+
+**Stray scan (all 77 run folders):**
+
+| run | previous run timed out or killed | stray requests found | workspace affected | verdict |
+|---|---|---|---|---|
+| T9 fx-paced15 F1 | yes (T9 paced F2, exit 124; that fx exited before its end) | no | no | clear |
+| T1 v2 F1 | itself timed out | — (it sent the stray 400 now counted in its row) | own workspace: 0 files modified at oracle time | suspect (own run only; already unusable) |
+| T1 v2 F2 | yes (F1) | yes: 1×400 at 16:33:21 from F1's fx (moved to F1) | no (separate workspace, already deleted; no model reply, so no tool call) | suspect, corrected |
+| T1 v2 H1 | yes (F2) | yes: 1×400 at 16:49:08 from F2's fx (moved to F2) | no | suspect, corrected |
+| T7 cap50 F1 attempts (170012, 170132) | yes (T9 postfix15-H3, manual security kill; its stderr went quiet before the kill) | no (0 requests) | no | clear |
+| T7 cap50 F1–F3, H1–H3 | no | no (no writes after any agent's end; no proxy rows outside any agent's run time) | no | clear |
+| S1 F1–F3, H1–H3 | no | no | no | clear: no S1 run timed out, so no stray could exist; this is the only proof (S1 ran before the benchagent move) |
+| all other runs | no | — | — | clear |
