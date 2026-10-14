@@ -312,6 +312,38 @@ class AllowListAndAuthTests(unittest.TestCase):
         self.assertEqual(rows[0]["phase"], "read")
         self.assertNotIn("side", rows[0])
 
+    def test_finish_label_allow_list(self):
+        for v in ("stop", "length", "tool_calls", "content_filter", "safety", "recitation", "other", "missing", "STOP"):
+            self.assertIn(proxy.finish_label(v), proxy.FINISH_LABELS)
+        self.assertEqual(proxy.finish_label("STOP"), "stop")
+        self.assertEqual(proxy.finish_label(None), "missing")
+        self.assertEqual(proxy.finish_label(""), "missing")
+        self.assertEqual(proxy.finish_label("SECRET_FREE_TEXT_x"), "other")
+        self.assertEqual(proxy.finish_label({"x": 1}), "other")
+        self.assertEqual(proxy.finish_label(7), "other")
+
+    def test_finish_reason_on_200_rows_only_and_label_only(self):
+        r = proxy.usage_record(200, {}, False, finish="SECRET_FREE_TEXT_y")
+        self.assertEqual(r["finish_reason"], "other")
+        self.assertNotIn("SECRET", json.dumps(r))
+        self.assertNotIn("finish_reason", proxy.usage_record(503, {}, False, finish="stop"))
+        self.assertEqual(proxy.usage_record(200, {}, False)["finish_reason"], "missing")
+
+    def test_stream_finish_is_upstream_value_before_rewrite(self):
+        # upstream says "stop" after a tool call; the agent gets "tool_calls", but the log keeps the upstream "stop".
+        rw = proxy.StreamRewriter()
+        rw.chunk({"choices": [{"index": 0, "delta": {"tool_calls": [{"id": "a", "function": {"name": "f", "arguments": "{}"}}]}}]})
+        out = rw.chunk({"choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]})
+        self.assertEqual(out["choices"][0]["finish_reason"], "tool_calls")
+        self.assertEqual(proxy.finish_label(rw.upstream_finish), "stop")
+
+    def test_nonstream_finish_logged_end_to_end(self):
+        open(self.usage_path, "w").close()
+        st = self.req("POST", "/chat/completions", body=b'{"model":"m","messages":[]}')
+        rows = [json.loads(l) for l in open(self.usage_path)]
+        self.assertEqual(st, 200)
+        self.assertIn(rows[-1]["finish_reason"], proxy.FINISH_LABELS)
+
     def test_exc_type_name_only(self):
         import ssl
         self.assertEqual(proxy.exc_type_name(TimeoutError("SECRET_TEXT")), "TimeoutError")
@@ -380,7 +412,7 @@ class AllowListAndAuthTests(unittest.TestCase):
         self.assertEqual(self.req("GET", "/models"), 404)  # blocked locally: not forwarded, not logged
         rows = [json.loads(l) for l in open(self.usage_path)]
         self.assertEqual(len(rows), 1)
-        self.assertEqual(set(rows[0]), {"ts_ms", "run_id", "status", "input_tokens", "output_tokens", "start_ms", "end_ms", "dur_ms"})
+        self.assertEqual(set(rows[0]), {"ts_ms", "run_id", "status", "input_tokens", "output_tokens", "start_ms", "end_ms", "dur_ms", "finish_reason"})
         self.assertEqual(rows[0]["run_id"], "T7-run-A")  # from the operator file, not X-Run-Id
         self.assertEqual((rows[0]["status"], rows[0]["input_tokens"], rows[0]["output_tokens"]), (200, 11, 3))
         raw = open(self.usage_path).read()
@@ -392,7 +424,7 @@ class AllowListAndAuthTests(unittest.TestCase):
         rw = proxy.StreamRewriter()
         list(proxy.sse_rewrite(lines(), rw))
         rec = proxy.usage_record(200, rw.last_usage, True)
-        self.assertEqual(set(rec), {"ts_ms", "run_id", "status", "input_tokens", "output_tokens", "start_ms", "end_ms", "dur_ms"})
+        self.assertEqual(set(rec), {"ts_ms", "run_id", "status", "input_tokens", "output_tokens", "start_ms", "end_ms", "dur_ms", "finish_reason"})
 
 
     def test_run_id_file_reread_and_header_ignored(self):

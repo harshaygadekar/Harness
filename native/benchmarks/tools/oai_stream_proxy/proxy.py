@@ -53,6 +53,7 @@ class StreamRewriter:
         self.last = {}     # choice_index -> last assigned index
         self.pending_usage = None
         self.last_usage = None  # final usage seen in the stream (counts only; for the usage log)
+        self.upstream_finish = None  # first upstream finish_reason seen (before any rewrite); label only
 
     def chunk(self, obj):
         """Return rewritten obj, or None to drop it."""
@@ -64,6 +65,8 @@ class StreamRewriter:
         keep = []
         for ch in obj.get("choices") or []:
             ci = ch.get("index", 0)
+            if self.upstream_finish is None and ch.get("finish_reason") is not None:
+                self.upstream_finish = ch.get("finish_reason")
             ch.pop("extra_content", None)
             d = ch.get("delta")
             if isinstance(d, dict):
@@ -226,7 +229,26 @@ def log_no_run(start_ms):
             f.write(line)
 
 
-def usage_record(status, usage, stream, start_ms=None, end_ms=None):
+FINISH_LABELS = ("stop", "length", "tool_calls", "content_filter", "safety", "recitation", "other", "missing")
+
+
+def finish_label(v):
+    """Fixed label from the allow list; never free text. None/empty -> missing, unknown -> other."""
+    if v is None or v == "":
+        return "missing"
+    if isinstance(v, str) and v.lower() in FINISH_LABELS:
+        return v.lower()
+    return "other"
+
+
+def nonstream_finish(obj):
+    try:
+        return (obj.get("choices") or [{}])[0].get("finish_reason")
+    except (AttributeError, IndexError, TypeError):
+        return None
+
+
+def usage_record(status, usage, stream, start_ms=None, end_ms=None, finish=None):
     """Counts-only record: never bodies, headers or keys. start_ms = upstream send (after pacing), end_ms = response fully relayed."""
     u = usage if isinstance(usage, dict) else {}
     def num(*names):
@@ -239,13 +261,14 @@ def usage_record(status, usage, stream, start_ms=None, end_ms=None):
             "input_tokens": num("prompt_tokens", "input_tokens"),
             "output_tokens": num("completion_tokens", "output_tokens"),
             "start_ms": start_ms, "end_ms": end_ms,
-            "dur_ms": (end_ms - start_ms) if start_ms is not None and end_ms is not None else None}
+            "dur_ms": (end_ms - start_ms) if start_ms is not None and end_ms is not None else None,
+            **({"finish_reason": finish_label(finish)} if int(status) == 200 else {})}
 
 
-def log_usage(status, usage, stream, start_ms=None):
+def log_usage(status, usage, stream, start_ms=None, finish=None):
     if not USAGE_FILE:
         return
-    line = json.dumps(usage_record(status, usage, stream, start_ms, _now_ms() if start_ms is not None else None)) + "\n"
+    line = json.dumps(usage_record(status, usage, stream, start_ms, _now_ms() if start_ms is not None else None, finish)) + "\n"
     with _USAGE_LOCK:
         with open(USAGE_FILE, "a") as f:
             f.write(line)
@@ -423,17 +446,18 @@ class H(BaseHTTPRequestHandler):
                     log_transport_error(t0, e, None, None, side="client")
                     self.close_connection = True
                     return
-            log_usage(r.status, rw.last_usage, True, t0)
+            log_usage(r.status, rw.last_usage, True, t0, rw.upstream_finish)
             self.close_connection = True
             return
         data = r.read()
-        usage = None
+        usage = finish = None
         if "json" in ctype:
             try:
-                usage = json.loads(data).get("usage")
+                jo = json.loads(data)
+                usage = jo.get("usage"); finish = nonstream_finish(jo)
             except (ValueError, AttributeError):
                 usage = None
-        log_usage(r.status, usage, False, t0)
+        log_usage(r.status, usage, False, t0, finish)
         if r.status == 200 and "json" in ctype:
             try:
                 data = json.dumps(rewrite_nonstream(json.loads(data))).encode()
