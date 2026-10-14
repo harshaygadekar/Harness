@@ -52,7 +52,7 @@ PY
 )
 [ -n "$PORT" ] || { echo "no unused free port found" >&2; exit 2; }
 echo "$PORT" | sudo -n tee -a "$UP" >/dev/null
-T=$1; L=$2; IV=${IV:-5000}; CAP=${CAP:-24}; TAG=${TAG:-isolated}
+T=$1; L=$2; AGENT_TIMEOUT_S=900; IV=${IV:-5000}; CAP=${CAP:-24}; TAG=${TAG:-isolated}
 NATIVE=$(cd "$HERE/../.." && pwd)
 HB=${HB:-$NATIVE/target/release/harness}; FX=${FX:-/tmp/fxbin/fx}; RUNS=${RUNS:-$HERE/runs}
 case $T in T1) PACK=T1v2_broken_calc; FIX=broken_calc_v2;; T7) PACK=T7_large_repo; FIX=large_repo_v1;; T9) PACK=T9_noisy_tests; FIX=noisy_tests_v1;; S1) PACK=S1_deny_probe; FIX=deny_probe_v1;; *) exit 2;; esac
@@ -113,18 +113,20 @@ if [ $PROC_OK -ne 0 ]; then echo "proxy process check failed; run not started" >
 if ! grep -q "OVERALL PASS" "$D/key_isolation_check.txt"; then echo "key isolation check failed; run not started" > "$D/ABORTED.txt"; sudo -n pkill -KILL -u benchproxy -f "proxy.py $PORT"; exit 3; fi
 PROXY_PID=$(pgrep -u benchproxy -f "proxy.py $PORT" | head -1); PROXY_UID=$(ps -o uid= -p "$PROXY_PID" 2>/dev/null | tr -d ' ')
 echo "$PORT" > "$D/proxy_port"
+# Right before the agent starts: the proxy PID must still be alive; else abort before any request.
+if [ -z "$PROXY_PID" ] || ! kill -0 "$PROXY_PID" 2>/dev/null && ! sudo -n kill -0 "$PROXY_PID" 2>/dev/null; then echo "proxy PID not alive before agent start; run not started" > "$D/ABORTED.txt"; exit 8; fi
 S=$(date +%s%3N)
 if [ -n "$FAKE" ]; then
   echo "FAKE AGENT (test only): $FAKE" > "$D/agent_cmd.txt"
-  (cd "$W" && sudo -n -u "$AU" env -i "${AENV[@]}" setsid --wait timeout -k 10 480 "$FAKE" </dev/null >"$D/stdout.txt" 2>"$D/stderr.txt") & AGPID=$!; wait $AGPID; echo $? > "$D/agent_exit"
+  (cd "$W" && sudo -n -u "$AU" env -i "${AENV[@]}" setsid --wait timeout -k 10 "$AGENT_TIMEOUT_S" "$FAKE" </dev/null >"$D/stdout.txt" 2>"$D/stderr.txt") & AGPID=$!; wait $AGPID; echo $? > "$D/agent_exit"
 elif [ $A = fx ]; then
   MODE="--auto"; [ $T = S1 ] && MODE=""
   echo "fx ask --json --no-save $MODE --model gemini-3.5-flash-lite; FX_MAX_AGENT_STEPS=$CAP; user=$AU env -i" > "$D/agent_cmd.txt"
-  (cd "$W" && sudo -n -u "$AU" env -i "${AENV[@]}" setsid --wait timeout -k 10 480 /usr/bin/time -v -o "$P/time.txt" "$FX" ask --json --no-save $MODE --model gemini-3.5-flash-lite -- "$PROMPT" </dev/null >"$D/stdout.txt" 2>"$D/stderr.txt") & AGPID=$!; wait $AGPID; echo $? > "$D/agent_exit"
+  (cd "$W" && sudo -n -u "$AU" env -i "${AENV[@]}" setsid --wait timeout -k 10 "$AGENT_TIMEOUT_S" /usr/bin/time -v -o "$P/time.txt" "$FX" ask --json --no-save $MODE --model gemini-3.5-flash-lite -- "$PROMPT" </dev/null >"$D/stdout.txt" 2>"$D/stderr.txt") & AGPID=$!; wait $AGPID; echo $? > "$D/agent_exit"
 else
   ALLOW="coding,shell"; [ $T = S1 ] && ALLOW="read_file,list_files,search,write_file,apply_patch,run_tests"
   echo "harness ask --model openai --allow $ALLOW --max-steps $CAP; user=$AU env -i" > "$D/agent_cmd.txt"
-  (sudo -n -u "$AU" env -i "${AENV[@]}" setsid --wait timeout -k 10 480 /usr/bin/time -v -o "$P/time.txt" "$HB" ask --model openai --allow "$ALLOW" --workspace "$W" --max-steps "$CAP" --record "$P/rec" --prompt "$PROMPT" </dev/null >"$D/stdout.txt" 2>"$D/stderr.txt") & AGPID=$!; wait $AGPID; echo $? > "$D/agent_exit"
+  (sudo -n -u "$AU" env -i "${AENV[@]}" setsid --wait timeout -k 10 "$AGENT_TIMEOUT_S" /usr/bin/time -v -o "$P/time.txt" "$HB" ask --model openai --allow "$ALLOW" --workspace "$W" --max-steps "$CAP" --record "$P/rec" --prompt "$PROMPT" </dev/null >"$D/stdout.txt" 2>"$D/stderr.txt") & AGPID=$!; wait $AGPID; echo $? > "$D/agent_exit"
 fi
 E=$(date +%s%3N); echo $((E-S)) > "$D/wall_ms"
 # Cleanup: kill ALL agent-user processes (setsid'd children, SIGTERM-ignorers), then verify none remain.
@@ -143,7 +145,7 @@ cp "$HD/proxy_hold.json" "$D/" 2>/dev/null; cp "$HD/proxy_usage.jsonl" "$D/" 2>/
 (cd "$W" && cargo test > "$D/cargo_test.txt" 2>&1; echo $? > "$D/cargo_exit"; git add -A; git diff --cached HEAD > "$D/final.diff"; git diff --cached --name-only HEAD > "$D/files_modified.txt")
 python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['harness_sha'])" "$D/rec/metrics.json" > "$D/harness_sha.txt" 2>/dev/null \
   || { "$HB" replay "$(ls "$HERE"/runs/*/rec/run.jsonl 2>/dev/null | head -1)" --metrics-out "$D/.sha.json" >/dev/null 2>&1 && python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['harness_sha'])" "$D/.sha.json" > "$D/harness_sha.txt"; rm -f "$D/.sha.json"; }
-python3 - "$D" <<'P'
+AGENT_TIMEOUT_S=$AGENT_TIMEOUT_S python3 - "$D" <<'P'
 import json,sys,os
 D=sys.argv[1]; p=os.path.join(D,"run_env.json"); e=json.load(open(p))
 rows=[json.loads(l) for l in open(os.path.join(D,"proxy_usage.jsonl")) if l.strip()]
@@ -152,6 +154,7 @@ e["proxy_requests"]=len(rows); e["proxy_status_counts"]={}
 for r in rows: e["proxy_status_counts"][str(r["status"])]=e["proxy_status_counts"].get(str(r["status"]),0)+1
 e["proxy_input_tokens"]=sum(r.get("input_tokens") or 0 for r in rows); e["proxy_output_tokens"]=sum(r.get("output_tokens") or 0 for r in rows)
 e["proxy_proc_check"]=json.load(open(os.path.join(D,"proxy_proc_check.json")))
+e["agent_timeout_s"]=int(os.environ.get("AGENT_TIMEOUT_S","0"))
 json.dump(e,open(p,"w"),indent=1)
 P
 ls -A "$P" | grep -vE '^(time.txt|rec)$' > "$D/parent_ls.txt"; echo "$MSHA $(sha256sum "$P/MARKER.txt" | cut -c1-64)" > "$D/marker_sha.txt"
