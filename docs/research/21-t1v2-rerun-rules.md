@@ -25,3 +25,8 @@ Status: fixed before any rerun. Ruling by The Chief, 2026-10-13 (Tech Team).
 - For Harness time, use `agent_wall_ms_excl_retry_wait`.
 - Request counts: proxy requests minus `model_retries.reasons.http_503` and `reasons.http_429`. Connection retries are matched to proxy rows by time, not subtracted. A retry that cannot be matched is listed.
 - fx token numbers are self-reported, and they do not count the review requests.
+
+## Amendment (The Chief, 2026-10-15)
+- Runner time limit: 900 s for BOTH agents (fx and Harness). `run_isolated.sh` sets it and writes `agent_timeout_s` in `run_env.json`.
+- A transport error at the proxy (usage row with `"status": "error"`) counts the same as a 503. The run is upstream-affected and counts for nothing.
+- So the first rerun F1 (`T1-trackB-fx-isolated-cap50-rerun-F1-20261014T165804`, 2 transport errors, 480 s limit) is upstream-affected.
