@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Build a results table (TSV) from run folders. Fake, killed and upstream-affected (any 503, 429 or transport error), oracle-less (oracle_success missing or null)
-and zero-200 runs are refused: they are listed
+"""Build a results table (TSV) from run folders. Fake, killed, aborted (ABORTED.txt) and upstream-affected (any 503, 429 or transport error),
+oracle-less (oracle_success missing or null) and zero-200 runs are refused: they are listed
 on stderr and never count toward any N-of-N result.
 usage: results_table.py <run_dir> [<run_dir> ...]"""
 import json, os, re, sys

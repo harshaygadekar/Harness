@@ -1,4 +1,4 @@
-# Per-run summary.json builder (moved into the repo from /workspace/p5/summ.py). Refuses fake and killed runs.
+# Per-run summary.json builder (moved into the repo from /workspace/p5/summ.py). Refuses fake, killed and aborted (ABORTED.txt) runs.
 import json,sys,os,re
 D,T,A=sys.argv[1:4]; OUTN=sys.argv[4] if len(sys.argv)>4 else 'summary.json'
 sys.path.insert(0,os.path.dirname(os.path.abspath(__file__)))
