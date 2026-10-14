@@ -251,12 +251,38 @@ def log_usage(status, usage, stream, start_ms=None):
             f.write(line)
 
 
-def log_transport_error(start_ms):
-    """Upstream transport error: status "error" plus times; no other fields, no exception text."""
+TRANSPORT_PHASES = ("connect", "send", "read")
+
+
+def exc_type_name(e):
+    """Exception type name only (e.g. TimeoutError, ssl.SSLError). Never the exception text."""
+    t = type(e)
+    mod = t.__module__
+    return t.__name__ if mod in ("builtins", "__main__") else f"{mod}.{t.__name__}"
+
+
+def sock_af(conn):
+    """Address family of the upstream socket: "IPv4", "IPv6" or None (no socket yet)."""
+    import socket
+    sk = getattr(conn, "sock", None)
+    fam = getattr(sk, "family", None)
+    return {socket.AF_INET: "IPv4", socket.AF_INET6: "IPv6"}.get(fam)
+
+
+def log_transport_error(start_ms, exc=None, phase=None, af=None):
+    """Upstream transport error: status "error", times, exception type name and phase.
+    No exception text, no headers, no URL."""
     if not USAGE_FILE:
         return
     end = _now_ms()
-    line = json.dumps({"status": "error", "start_ms": start_ms, "end_ms": end, "dur_ms": end - start_ms}) + "\n"
+    rec = {"status": "error", "start_ms": start_ms, "end_ms": end, "dur_ms": end - start_ms}
+    if exc is not None:
+        rec["exc_type"] = exc_type_name(exc)
+    if phase in TRANSPORT_PHASES:
+        rec["phase"] = phase
+    if af in ("IPv4", "IPv6"):
+        rec["af"] = af
+    line = json.dumps(rec) + "\n"
     with _USAGE_LOCK:
         with open(USAGE_FILE, "a") as f:
             f.write(line)
@@ -344,12 +370,18 @@ class H(BaseHTTPRequestHandler):
             hdrs["Accept"] = self.headers["Accept"]
         PACER.wait()
         t0 = _now_ms()
+        phase, af = "connect", None
         try:
+            conn.connect()
+            af = sock_af(conn)
+            phase = "send"
             conn.request(self.command, u.path + path, body=body, headers=hdrs)
+            phase = "read"
             r = conn.getresponse()
-        except Exception:
-            # Transport error (connect/timeout/reset): log times only, never the exception text.
-            log_transport_error(t0)
+        except Exception as e:
+            af = af or sock_af(conn)
+            # Transport error: log times, exception type name and phase only, never the exception text.
+            log_transport_error(t0, e, phase, af)
             try:
                 conn.close()
                 self.send_response(502)
@@ -374,8 +406,11 @@ class H(BaseHTTPRequestHandler):
                 for out in sse_rewrite(r, rw):
                     self.wfile.write(out)
                     self.wfile.flush()
-            finally:
-                log_usage(r.status, rw.last_usage, True, t0)
+            except Exception as e:
+                log_transport_error(t0, e, "read", af)
+                self.close_connection = True
+                return
+            log_usage(r.status, rw.last_usage, True, t0)
             self.close_connection = True
             return
         data = r.read()

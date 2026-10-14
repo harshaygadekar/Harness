@@ -200,12 +200,77 @@ class AllowListAndAuthTests(unittest.TestCase):
         self.assertEqual(st, 502)
         rows = [json.loads(l) for l in open(self.usage_path)]
         self.assertEqual(len(rows), 1)
-        self.assertEqual(set(rows[0]), {"status", "start_ms", "end_ms", "dur_ms"})
+        self.assertEqual(set(rows[0]), {"status", "start_ms", "end_ms", "dur_ms", "exc_type", "phase"})
         self.assertEqual(rows[0]["status"], "error")
+        self.assertEqual(rows[0]["exc_type"], "ConnectionRefusedError")
+        self.assertEqual(rows[0]["phase"], "connect")
         self.assertEqual(rows[0]["dur_ms"], rows[0]["end_ms"] - rows[0]["start_ms"])
         raw = open(self.usage_path).read()
-        for m in ("MARKER_ERR_BODY", "MARKER_ERR_AUTH", "fake-test-key-123", "Connection", "refused"):
+        for m in ("MARKER_ERR_BODY", "MARKER_ERR_AUTH", "fake-test-key-123", "Errno", "refused"):
             self.assertNotIn(m, raw)
+
+    def _raw_upstream(self, reply):
+        """One-shot raw TCP upstream: read the request, send `reply` bytes, then close."""
+        import socket, threading
+        srv = socket.socket(); srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        srv.bind(("127.0.0.1", 0)); srv.listen(1); port = srv.getsockname()[1]
+        def run():
+            c, _ = srv.accept(); c.settimeout(5)
+            buf = b""
+            try:
+                while b"\r\n\r\n" not in buf:
+                    buf += c.recv(65536)
+                h, _, rest = buf.partition(b"\r\n\r\n")
+                n = int([l.split(b":")[1] for l in h.split(b"\r\n") if l.lower().startswith(b"content-length")][0])
+                while len(rest) < n:
+                    rest += c.recv(65536)
+                if reply:
+                    c.sendall(reply)
+            finally:
+                c.close(); srv.close()
+        threading.Thread(target=run, daemon=True).start()
+        return port
+
+    def _error_row_via(self, port, marker):
+        saved = proxy.UPSTREAM
+        proxy.UPSTREAM = "http://127.0.0.1:%d/v1beta/openai" % port
+        try:
+            open(self.usage_path, "w").close()
+            try:
+                self.req("POST", "/chat/completions", body=('{"model":"m","messages":[],"x":"%s_BODY"}' % marker).encode(), auth="Bearer %s_AUTH" % marker)
+            except Exception:
+                pass
+        finally:
+            proxy.UPSTREAM = saved
+        rows = [json.loads(l) for l in open(self.usage_path)]
+        raw = open(self.usage_path).read()
+        for m in (marker + "_BODY", marker + "_AUTH", "fake-test-key-123", "127.0.0.1", "http://", "/v1beta", "closed", "Remote end"):
+            self.assertNotIn(m, raw)
+        return rows
+
+    def test_transport_error_phase_first_byte(self):
+        rows = self._error_row_via(self._raw_upstream(b""), "MARKER_FB")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(set(rows[0]), {"status", "start_ms", "end_ms", "dur_ms", "exc_type", "phase", "af"})
+        self.assertEqual((rows[0]["status"], rows[0]["phase"]), ("error", "read"))
+        self.assertEqual(rows[0]["exc_type"], "http.client.RemoteDisconnected")
+        self.assertEqual(rows[0]["af"], "IPv4")
+
+    def test_transport_error_phase_mid_stream(self):
+        reply = (b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n"
+                 b"40\r\ndata: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"}}]}\n\n")
+        rows = self._error_row_via(self._raw_upstream(reply), "MARKER_MS")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(set(rows[0]), {"status", "start_ms", "end_ms", "dur_ms", "exc_type", "phase", "af"})
+        self.assertEqual((rows[0]["status"], rows[0]["phase"]), ("error", "read"))
+        self.assertTrue(rows[0]["exc_type"])
+        self.assertEqual(rows[0]["af"], "IPv4")
+
+    def test_exc_type_name_only(self):
+        import ssl
+        self.assertEqual(proxy.exc_type_name(TimeoutError("SECRET_TEXT")), "TimeoutError")
+        self.assertEqual(proxy.exc_type_name(ssl.SSLError("SECRET_TEXT")), "ssl.SSLError")
+        self.assertNotIn("SECRET", proxy.exc_type_name(ConnectionResetError("SECRET_TEXT")))
 
     def test_no_run_gate_returns_503_and_logs_times_only(self):
         self.seen.clear()
