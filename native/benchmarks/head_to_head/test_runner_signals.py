@@ -129,7 +129,7 @@ for x in (d3, kd):
     r = subprocess.run([sys.executable, os.path.join(HERE, "summ.py"), x, "T1", "harness"], capture_output=True, text=True)
     check(f"summ.py refuses {os.path.basename(x)}", r.returncode == 3 and "REFUSED" in r.stderr, r.stderr.strip())
 r = subprocess.run([sys.executable, os.path.join(HERE, "results_table.py"), d3, kd], capture_output=True, text=True)
-check("results_table.py refuses fake and killed runs (0 counted)", r.stderr.count("REFUSED") == 2 and len(r.stdout.strip().splitlines()) == 1, r.stderr.strip().splitlines()[-1])
+check("results_table.py refuses fake and killed runs (0 counted)", r.stderr.count("REFUSED") == 2 and "# counted runs: 0;" in r.stderr and all("\tREFUSED: " in l for l in r.stdout.strip().splitlines()[1:]), r.stderr.strip().splitlines()[-1])
 # ---- Planted folders and forged pointers (Jessie's hole). Nothing outside legit run folders may change.
 import hashlib
 def snapshot(paths):
