@@ -18,11 +18,12 @@ def upstream_counts(d):
             if not line.strip():
                 continue
             try:
-                st = json.loads(line).get("status")
+                row = json.loads(line)
             except ValueError:
                 continue
+            st = row.get("status")
             n503 += st == 503
-            nerr += st == "error"
+            nerr += st == "error" and row.get("side") != "client"  # client-side rows are not upstream errors
     except OSError:
         pass
     return n503, nerr

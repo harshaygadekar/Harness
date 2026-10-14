@@ -269,7 +269,7 @@ def sock_af(conn):
     return {socket.AF_INET: "IPv4", socket.AF_INET6: "IPv6"}.get(fam)
 
 
-def log_transport_error(start_ms, exc=None, phase=None, af=None):
+def log_transport_error(start_ms, exc=None, phase=None, af=None, side=None):
     """Upstream transport error: status "error", times, exception type name and phase.
     No exception text, no headers, no URL."""
     if not USAGE_FILE:
@@ -282,6 +282,8 @@ def log_transport_error(start_ms, exc=None, phase=None, af=None):
         rec["phase"] = phase
     if af in ("IPv4", "IPv6"):
         rec["af"] = af
+    if side == "client":
+        rec["side"] = "client"  # agent side; not an upstream transport error
     line = json.dumps(rec) + "\n"
     with _USAGE_LOCK:
         with open(USAGE_FILE, "a") as f:
@@ -402,14 +404,25 @@ class H(BaseHTTPRequestHandler):
             self.send_header("Connection", "close")
             self.end_headers()
             rw = StreamRewriter()
-            try:
-                for out in sse_rewrite(r, rw):
+            it = sse_rewrite(r, rw)
+            while True:
+                try:
+                    out = next(it)
+                except StopIteration:
+                    break
+                except Exception as e:
+                    # Upstream side: a transport error.
+                    log_transport_error(t0, e, "read", af)
+                    self.close_connection = True
+                    return
+                try:
                     self.wfile.write(out)
                     self.wfile.flush()
-            except Exception as e:
-                log_transport_error(t0, e, "read", af)
-                self.close_connection = True
-                return
+                except Exception as e:
+                    # Client side (the agent closed its socket): not a transport error.
+                    log_transport_error(t0, e, None, None, side="client")
+                    self.close_connection = True
+                    return
             log_usage(r.status, rw.last_usage, True, t0)
             self.close_connection = True
             return

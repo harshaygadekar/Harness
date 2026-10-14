@@ -1,3 +1,4 @@
+import time
 """Unit tests with made-up sample chunks (no real content, no secrets). Run: python3 -m unittest test_proxy"""
 import json, unittest, proxy
 
@@ -209,7 +210,7 @@ class AllowListAndAuthTests(unittest.TestCase):
         for m in ("MARKER_ERR_BODY", "MARKER_ERR_AUTH", "fake-test-key-123", "Errno", "refused"):
             self.assertNotIn(m, raw)
 
-    def _raw_upstream(self, reply):
+    def _raw_upstream(self, reply, more=None):
         """One-shot raw TCP upstream: read the request, send `reply` bytes, then close."""
         import socket, threading
         srv = socket.socket(); srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -226,6 +227,12 @@ class AllowListAndAuthTests(unittest.TestCase):
                     rest += c.recv(65536)
                 if reply:
                     c.sendall(reply)
+                for part in (more or []):
+                    time.sleep(0.05)
+                    try:
+                        c.sendall(part)
+                    except OSError:
+                        break
             finally:
                 c.close(); srv.close()
         threading.Thread(target=run, daemon=True).start()
@@ -265,6 +272,45 @@ class AllowListAndAuthTests(unittest.TestCase):
         self.assertEqual((rows[0]["status"], rows[0]["phase"]), ("error", "read"))
         self.assertTrue(rows[0]["exc_type"])
         self.assertEqual(rows[0]["af"], "IPv4")
+
+    def test_client_side_write_error_is_not_transport_error(self):
+        import socket
+        chunk = b'data: {"choices":[{"index":0,"delta":{"content":"%s"}}]}\n\n' % (b"x" * 2000)
+        hexlen = b"%x" % len(chunk)
+        head = b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n"
+        more = [hexlen + b"\r\n" + chunk + b"\r\n"] * 200 + [b"0\r\n\r\n"]
+        port = self._raw_upstream(head + more[0], more[1:])
+        saved = proxy.UPSTREAM
+        proxy.UPSTREAM = "http://127.0.0.1:%d/v1beta/openai" % port
+        try:
+            open(self.usage_path, "w").close()
+            c = socket.create_connection(("127.0.0.1", self.port))
+            body = b'{"model":"m","messages":[],"stream":true,"x":"MARKER_CL_BODY"}'
+            c.sendall(b"POST /chat/completions HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nContent-Length: %d\r\n\r\n" % len(body) + body)
+            c.recv(100)
+            c.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, b"\x01\x00\x00\x00\x00\x00\x00\x00")
+            c.close()  # agent side goes away mid-stream
+            for _ in range(100):
+                if open(self.usage_path).read().strip():
+                    break
+                time.sleep(0.1)
+        finally:
+            proxy.UPSTREAM = saved
+        rows = [json.loads(l) for l in open(self.usage_path)]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["side"], "client")
+        self.assertEqual(rows[0]["status"], "error")
+        self.assertNotIn("phase", rows[0]); self.assertNotIn("af", rows[0])
+        self.assertIn(rows[0]["exc_type"], ("BrokenPipeError", "ConnectionResetError"))
+        self.assertNotIn("MARKER_CL_BODY", open(self.usage_path).read())
+
+    def test_upstream_read_error_has_no_client_side(self):
+        reply = (b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n"
+                 b"40\r\ndata: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"}}]}\n\n")
+        rows = self._error_row_via(self._raw_upstream(reply), "MARKER_UR")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["phase"], "read")
+        self.assertNotIn("side", rows[0])
 
     def test_exc_type_name_only(self):
         import ssl
