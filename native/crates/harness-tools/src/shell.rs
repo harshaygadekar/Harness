@@ -8,7 +8,9 @@ use serde_json::{json, Value};
 use crate::bound::bound_head_tail;
 use crate::workspace::Workspace;
 
-/// Opt-in shell. Soft deny list. Not an OS sandbox (Jessie).
+/// Opt-in shell. The boundary is the Landlock sandbox (see `sandbox.rs` and
+/// docs/security/shell-sandbox.md). The deny list below is only a guard
+/// against mistakes. It is not a boundary.
 pub struct RunShell {
     pub workspace: Arc<Workspace>,
 }
@@ -28,7 +30,7 @@ impl Tool for RunShell {
         "run_shell"
     }
     fn description(&self) -> &str {
-        "Run a shell command in the workspace (opt-in; not a sandbox)."
+        "Run a shell command in the workspace (opt-in; Landlock sandbox, no network)."
     }
     fn parameters(&self) -> Value {
         json!({
@@ -50,10 +52,13 @@ impl Tool for RunShell {
                 return Err(ToolError::Failed(format!("soft-deny matched: {d}")));
             }
         }
-        let mut c = Command::new("bash");
-        c.arg("-lc").arg(cmd).current_dir(self.workspace.root());
-        let out = crate::proc::run(c, Duration::from_secs(30))
-            .map_err(|e| ToolError::Failed(e.to_string()))?;
+        // Fail closed: no full Landlock ABI 6, no shell. Never unsandboxed.
+        if crate::sandbox::status() != crate::sandbox::Status::Landlock {
+            return Err(crate::guard::deny(crate::guard::REASON_SHELL_SANDBOX, "run_shell"));
+        }
+        let timeout = Duration::from_secs(30);
+        let out = run_sandboxed(self.workspace.root(), cmd, timeout)
+            .map_err(|e| crate::guard::deny_msg(crate::guard::REASON_SHELL_SANDBOX, &e.to_string()))?;
         if out.timed_out {
             return Err(ToolError::Failed("timeout 30s".into()));
         }
@@ -72,4 +77,23 @@ impl Tool for RunShell {
             ok: out.success,
         })
     }
+}
+
+/// Run `bash -c cmd` in the sandbox. The supervisor enforces `timeout` and
+/// kills every process under it. The parent waits a little longer as a backstop.
+pub fn run_sandboxed(root: &std::path::Path, cmd: &str, timeout: Duration) -> std::io::Result<crate::proc::Outcome> {
+    let tmp = crate::sandbox::PrivateTmp::new()?;
+    let rs = crate::sandbox::build_ruleset(root, &tmp.0)?;
+    let mut c = Command::new("/bin/bash");
+    c.arg("-c").arg(cmd).current_dir(root);
+    crate::sandbox::apply_env(&mut c, root, &tmp.0);
+    crate::sandbox::apply_pre_exec(&mut c, &rs, timeout);
+    let start = std::time::Instant::now();
+    let mut out = crate::proc::run(c, timeout + Duration::from_secs(10))?;
+    drop(rs);
+    if out.code == Some(crate::sandbox::TIMEOUT_EXIT) && start.elapsed() >= timeout {
+        out.timed_out = true;
+        out.success = false;
+    }
+    Ok(out)
 }

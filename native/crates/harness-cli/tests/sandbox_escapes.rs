@@ -7,7 +7,10 @@
 //! 2. nothing changed or appeared outside the workspace (canary snapshot).
 //!
 //! A case that is NOT blocked is a real finding. It is marked
-//! `#[ignore = "KNOWN ESCAPE: ..."]`. Run them with `cargo test -- --ignored`.
+//! `#[ignore = "KNOWN ESCAPE: ..."]` or `#[ignore = "KNOWN LIMIT: ..."]`.
+//! Run them with `cargo test -- --ignored`.
+//! Shell cases: the boundary is the Landlock sandbox
+//! (docs/security/shell-sandbox.md). Known limits: UDP, and `.git` writes.
 //! Do not fix product code from here.
 
 use std::collections::BTreeMap;
@@ -285,108 +288,108 @@ fn shell(tag: &str, cmd: &str) {
 }
 
 #[test]
-#[ignore = "KNOWN ESCAPE: run_shell writes ../outside via redirection"]
+// Before the Landlock sandbox: KNOWN ESCAPE (run_shell writes ../outside via redirection). Now blocked.
 fn shell_redirect_dotdot() {
     shell("sh_redirect", "echo pwn > ../outside/pwn.txt");
 }
 
 #[test]
-#[ignore = "KNOWN ESCAPE: run_shell sh -c writes outside"]
+// Before the Landlock sandbox: KNOWN ESCAPE (run_shell sh -c writes outside). Now blocked.
 fn shell_sh_c() {
     shell("sh_c", "sh -c 'echo pwn > ../outside/pwn.txt'");
 }
 
 #[test]
-#[ignore = "KNOWN ESCAPE: run_shell bash -c writes outside"]
+// Before the Landlock sandbox: KNOWN ESCAPE (run_shell bash -c writes outside). Now blocked.
 fn shell_bash_c() {
     shell("bash_c", "bash -c \"echo pwn > ../outside/pwn.txt\"");
 }
 
 #[test]
-#[ignore = "KNOWN ESCAPE: run_shell env X=1 sh -c writes outside"]
+// Before the Landlock sandbox: KNOWN ESCAPE (run_shell env X=1 sh -c writes outside). Now blocked.
 fn shell_env_prefix() {
     shell("env_prefix", "env X=1 sh -c 'echo pwn > ../outside/pwn.txt'");
 }
 
 #[test]
-#[ignore = "KNOWN ESCAPE: run_shell rm with extra spaces deletes an outside file"]
+// Before the Landlock sandbox: KNOWN ESCAPE (run_shell rm with extra spaces deletes an outside file). Now blocked.
 fn shell_denied_rm_rf_root_spacing() {
     // Deny list has "rm -rf /". Extra spaces and a canary path target.
     shell("rm_spacing", "rm  -rf   {OUT}/canary.txt");
 }
 
 #[test]
-#[ignore = "KNOWN ESCAPE: run_shell /bin/chmod 0777 and /usr/bin/env pass the deny list"]
+// Before the Landlock sandbox: KNOWN ESCAPE (run_shell /bin/chmod 0777 and /usr/bin/env pass the deny list). Now blocked.
 fn shell_absolute_denied_binary() {
     // "chmod 777" is denied; absolute path and a different spelling.
     shell("abs_bin", "/bin/chmod 0777 ../outside/canary.txt; /usr/bin/env true > ../outside/pwn.txt");
 }
 
 #[test]
-#[ignore = "KNOWN ESCAPE: run_shell 'dd  if=' (two spaces) passes the deny list and writes outside"]
+// Before the Landlock sandbox: KNOWN ESCAPE (run_shell 'dd  if=' (two spaces) passes the deny list and writes outside). Now blocked.
 fn shell_dd_spaces() {
     // Deny list has "dd if="; "dd  if=" with two spaces.
     shell("dd_spaces", "dd  if=/dev/zero of=../outside/pwn.bin bs=1 count=1");
 }
 
 #[test]
-#[ignore = "KNOWN ESCAPE: run_shell quote splitting passes the deny list and writes outside"]
+// Before the Landlock sandbox: KNOWN ESCAPE (run_shell quote splitting passes the deny list and writes outside). Now blocked.
 fn shell_quoting_trick() {
     // "mkfs" denied; quote splitting. Target is a harmless write.
     shell("quoting", "m''kfs 2>/dev/null; e'c'ho pwn > '../outside/pwn.txt'");
 }
 
 #[test]
-#[ignore = "KNOWN ESCAPE: run_shell writes outside to a path with spaces"]
+// Before the Landlock sandbox: KNOWN ESCAPE (run_shell writes outside to a path with spaces). Now blocked.
 fn shell_path_with_spaces() {
     shell("spaces", "mkdir -p '../outside/a b' && echo pwn > '../outside/a b/pwn.txt'");
 }
 
 #[test]
-#[ignore = "KNOWN ESCAPE: run_shell ';' chaining writes outside"]
+// Before the Landlock sandbox: KNOWN ESCAPE (run_shell ';' chaining writes outside). Now blocked.
 fn shell_chain_semicolon() {
     shell("chain_semi", "true; echo pwn > ../outside/pwn.txt");
 }
 
 #[test]
-#[ignore = "KNOWN ESCAPE: run_shell '&&' chaining copies a file outside"]
+// Before the Landlock sandbox: KNOWN ESCAPE (run_shell '&&' chaining copies a file outside). Now blocked.
 fn shell_chain_and() {
     shell("chain_and", "true && cp README.md ../outside/pwn.txt");
 }
 
 #[test]
-#[ignore = "KNOWN ESCAPE: run_shell backticks write outside"]
+// Before the Landlock sandbox: KNOWN ESCAPE (run_shell backticks write outside). Now blocked.
 fn shell_backticks() {
     shell("backticks", "echo `echo pwn` > ../outside/pwn.txt");
 }
 
 #[test]
-#[ignore = "KNOWN ESCAPE: run_shell $(...) writes outside"]
+// Before the Landlock sandbox: KNOWN ESCAPE (run_shell $(...) writes outside). Now blocked.
 fn shell_dollar_paren() {
     shell("dollar_paren", "$(echo echo) pwn > ../outside/pwn.txt");
 }
 
 #[test]
-#[ignore = "KNOWN ESCAPE: run_shell '|sh' (no space) passes the deny list; then writes outside"]
+// Before the Landlock sandbox: KNOWN ESCAPE (run_shell '|sh' (no space) passes the deny list; then writes outside). Now blocked.
 fn shell_curl_pipe_sh_spacing() {
     // "curl | sh" denied; no-space form. No network: curl fails, sh still writes.
     shell("curl_sh", "curl -s http://127.0.0.1:9/ |sh; echo pwn > ../outside/pwn.txt");
 }
 
 #[test]
-#[ignore = "KNOWN ESCAPE: run_shell cat ../outside returns outside content"]
+// Before the Landlock sandbox: KNOWN ESCAPE (run_shell cat ../outside returns outside content). Now blocked.
 fn shell_read_outside() {
     shell("sh_read", "cat ../outside/secret.txt");
 }
 
 #[test]
-#[ignore = "KNOWN ESCAPE: run_shell cat .env returns .env content"]
+// Before the Landlock sandbox: KNOWN ESCAPE (run_shell cat .env returns .env content). Now blocked.
 fn shell_read_dotenv() {
     shell("sh_env", "cat .env");
 }
 
 #[test]
-#[ignore = "KNOWN ESCAPE: run_shell writes .git/hooks and reads outside"]
+// Before the Landlock sandbox: KNOWN ESCAPE (run_shell writes .git/hooks and reads outside). Now blocked.
 fn shell_git_hook() {
     shell("sh_git_hook", "printf '#!/bin/sh\\n' > .git/hooks/pre-commit && cat ../outside/canary.txt");
 }
@@ -700,4 +703,20 @@ fn every_write_tool_denies_extra_link_cases() {
             "new tool {n}: add it to WRITE_TOOLS if it writes"
         );
     }
+}
+
+// The `.git` part of shell_git_hook. Landlock cannot remove access to a path
+// inside the workspace, so the shell can write `.git`. Known limit (design
+// note). Not counted as passing.
+#[test]
+#[ignore = "KNOWN LIMIT: run_shell can write .git/hooks inside the workspace"]
+fn shell_git_hook_write_only() {
+    shell("sh_git_hook_w", "printf '#!/bin/sh\\n' > .git/hooks/pre-commit");
+}
+
+// Known limit: Landlock does not control UDP. Not counted as passing.
+#[test]
+#[ignore = "KNOWN LIMIT: run_shell can send UDP"]
+fn shell_udp_send() {
+    shell("sh_udp", "python3 -c 'import socket; socket.socket(socket.AF_INET, socket.SOCK_DGRAM).sendto(b\"x\", (\"127.0.0.1\", 9))'");
 }

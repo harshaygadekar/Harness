@@ -1,4 +1,3 @@
-use std::fs;
 use std::sync::Arc;
 
 use harness_core::{Tool, ToolError, ToolResult};
@@ -28,15 +27,15 @@ impl Tool for ListFiles {
     fn call(&self, args: &Value) -> Result<ToolResult, ToolError> {
         let rel = args.get("path").and_then(|v| v.as_str()).unwrap_or(".");
         let path = crate::guard::resolve(&self.workspace, rel)?;
-        if !path.is_dir() {
-            return Err(ToolError::Failed(format!("not a directory: {rel}")));
-        }
-        let mut names: Vec<String> = fs::read_dir(&path)
+        // Step-by-step openat with O_NOFOLLOW (no check-then-open gap).
+        let dir = crate::safe_fs::open_dir(self.workspace.root(), &path, rel)
+            .map_err(|e| if crate::guard::deny_code(&e.to_string()).is_some() { e } else { ToolError::Failed(format!("not a directory: {rel}")) })?;
+        let mut names: Vec<String> = crate::safe_fs::list_dir(&dir)
             .map_err(|e| ToolError::Failed(e.to_string()))?
-            .filter_map(|e| e.ok())
-            .map(|e| {
-                let name = e.file_name().to_string_lossy().into_owned();
-                if e.path().is_dir() {
+            .into_iter()
+            .map(|(n, k)| {
+                let name = n.to_string_lossy().into_owned();
+                if k == crate::safe_fs::Kind::Dir {
                     format!("{name}/")
                 } else {
                     name
@@ -78,11 +77,8 @@ impl Tool for ReadFile {
             .and_then(|v| v.as_str())
             .ok_or_else(|| ToolError::Failed("path required".into()))?;
         let path = crate::guard::resolve_read(&self.workspace, rel)?;
-        let meta = fs::metadata(&path).map_err(|e| ToolError::Failed(e.to_string()))?;
-        if meta.len() > 256 * 1024 {
-            return Err(ToolError::Failed("file too large (>256 KiB)".into()));
-        }
-        let content = fs::read_to_string(&path).map_err(|e| ToolError::Failed(e.to_string()))?;
+        // Step-by-step openat with O_NOFOLLOW; size check on the open fd.
+        let content = crate::safe_fs::read_limited(self.workspace.root(), &path, rel, 256 * 1024)?;
         Ok(ToolResult {
             content,
             ok: true,

@@ -15,6 +15,9 @@ pub const REASON_GIT_WRITE: &str = "git_write";
 /// Path or link that leaves the workspace.
 pub const REASON_PATH_ESCAPE: &str = "path_escape";
 
+/// Shell refused: no full Landlock sandbox on this kernel (fail closed).
+pub const REASON_SHELL_SANDBOX: &str = "shell_sandbox_unavailable";
+
 pub const DENY_PREFIX: &str = "denied:";
 
 /// Make the fixed deny error.
@@ -22,10 +25,15 @@ pub fn deny(code: &'static str, rel: &str) -> ToolError {
     ToolError::Failed(format!("{DENY_PREFIX}{code}: {rel}"))
 }
 
+/// Deny error with free detail text (not a path).
+pub fn deny_msg(code: &'static str, detail: &str) -> ToolError {
+    ToolError::Failed(format!("{DENY_PREFIX}{code}: {detail}"))
+}
+
 /// Get the reason code from a tool error text, if it is a deny.
 pub fn deny_code(msg: &str) -> Option<&'static str> {
     let rest = msg.split(DENY_PREFIX).nth(1)?;
-    [REASON_ENV_READ, REASON_GIT_WRITE, REASON_PATH_ESCAPE]
+    [REASON_ENV_READ, REASON_GIT_WRITE, REASON_PATH_ESCAPE, REASON_SHELL_SANDBOX]
         .into_iter()
         .find(|c| rest.starts_with(&format!("{c}:")))
 }

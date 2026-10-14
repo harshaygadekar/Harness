@@ -1,4 +1,3 @@
-use std::fs;
 use std::sync::Arc;
 
 use harness_core::{Tool, ToolError, ToolResult};
@@ -53,7 +52,10 @@ impl Tool for Search {
 
         let mut hits = Vec::new();
         let mut skipped = Vec::new();
-        walk(&root, self.workspace.root(), &re, &mut hits, &mut skipped, 50);
+        // Step-by-step openat with O_NOFOLLOW for every folder and file.
+        let dir = crate::safe_fs::open_dir(self.workspace.root(), &root, rel)?;
+        let start = root.strip_prefix(self.workspace.root()).unwrap_or(std::path::Path::new("")).to_path_buf();
+        walk(&self.workspace, &dir, &start, &re, &mut hits, &mut skipped, 50, 0);
         // One note per skipped link. The note has the link path in the
         // workspace only, never the target path or content.
         let mut lines: Vec<String> = skipped
@@ -73,61 +75,68 @@ impl Tool for Search {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn walk(
-    dir: &std::path::Path,
-    ws_root: &std::path::Path,
+    ws: &Workspace,
+    dir: &std::os::fd::OwnedFd,
+    rel_dir: &std::path::Path,
     re: &regex::Regex,
     hits: &mut Vec<String>,
     skipped: &mut Vec<String>,
     max: usize,
+    depth: usize,
 ) {
-    if hits.len() >= max {
+    use crate::safe_fs::Kind;
+    if hits.len() >= max || depth > 64 {
         return;
     }
-    let entries = match fs::read_dir(dir) {
-        Ok(e) => e,
-        Err(_) => return,
-    };
-    for ent in entries.flatten() {
+    let Ok(mut entries) = crate::safe_fs::list_dir(dir) else { return };
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
+    for (name_os, kind) in entries {
         if hits.len() >= max {
             break;
         }
-        let path = ent.path();
-        let name = ent.file_name();
-        let name = name.to_string_lossy();
+        let name = name_os.to_string_lossy();
         if name.starts_with('.') || name == "target" || name == "node_modules" {
             continue;
         }
-        // Resolve the real path. Skip links that leave the workspace
-        // (path_escape). Do not descend into linked dirs (no loops).
-        // canonicalize reads only the link, not the target content.
-        let Ok(real) = path.canonicalize() else { continue };
-        if real.strip_prefix(ws_root).is_err() {
-            let rel = path.strip_prefix(ws_root).unwrap_or(&path);
-            skipped.push(rel.display().to_string());
-            continue;
-        }
-        let is_link = ent.file_type().map(|t| t.is_symlink()).unwrap_or(true);
-        if real.is_dir() {
-            if is_link {
+        let rel = rel_dir.join(&name_os);
+        let text = match kind {
+            Kind::Dir => {
+                if let Ok(sub) = crate::safe_fs::open_child_dir(dir, &name_os) {
+                    walk(ws, &sub, &rel, re, hits, skipped, max, depth + 1);
+                }
                 continue;
             }
-            walk(&path, ws_root, re, hits, skipped, max);
-        } else if real.is_file() {
-            let Ok(meta) = fs::metadata(&real) else { continue };
-            if meta.len() > 256 * 1024 {
-                continue;
+            Kind::File => match crate::safe_fs::read_child_os(dir, &name_os, 256 * 1024) {
+                Ok(Some(t)) => t,
+                _ => continue,
+            },
+            Kind::Link => {
+                // A link that leaves the workspace: one note, link path only
+                // (never the target path or content). Linked folders are not
+                // walked (no loops). A link to a file inside is read through
+                // its real path, again with openat + O_NOFOLLOW.
+                let rel_s = rel.to_string_lossy().into_owned();
+                let Ok(real) = ws.resolve(&rel_s) else {
+                    skipped.push(rel_s);
+                    continue;
+                };
+                if crate::guard::is_env_name(real.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default().as_str()) {
+                    continue;
+                }
+                match crate::safe_fs::read_limited(ws.root(), &real, &rel_s, 256 * 1024) {
+                    Ok(t) => t,
+                    Err(_) => continue,
+                }
             }
-            let Ok(text) = fs::read_to_string(&real) else {
-                continue;
-            };
-            for (i, line) in text.lines().enumerate() {
-                if re.is_match(line) {
-                    let rel = path.strip_prefix(ws_root).unwrap_or(&path);
-                    hits.push(format!("{}:{}:{}", rel.display(), i + 1, truncate(line, 200)));
-                    if hits.len() >= max {
-                        break;
-                    }
+            Kind::Other => continue,
+        };
+        for (i, line) in text.lines().enumerate() {
+            if re.is_match(line) {
+                hits.push(format!("{}:{}:{}", rel.display(), i + 1, truncate(line, 200)));
+                if hits.len() >= max {
+                    break;
                 }
             }
         }

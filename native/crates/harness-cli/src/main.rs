@@ -387,6 +387,7 @@ fn ask_cmd(
         oracle_success: None,
     };
     let mut metrics = aggregate(&result.events, &meta);
+    add_sandbox_metric(&mut metrics, allow_names.iter().any(|n| n == "run_shell"));
     if let Some((n, wait_ms, reasons)) = model_retries {
         add_retry_metrics(&mut metrics, n, wait_ms, &reasons);
         let _ = fs::write(record_dir.join("model_retries.txt"), format!("{n}\n"));
@@ -534,6 +535,22 @@ fn add_retry_metrics(
 }
 
 /// Provider-reported token usage; null (not 0) when the provider omitted it.
+/// `shell_sandbox` in metrics.json: `off` (no shell in the run),
+/// `landlock` (shell on, sandbox on) or `unavailable` (shell refused, fail closed).
+fn sandbox_state(shell_on: bool) -> &'static str {
+    if shell_on {
+        harness_tools::sandbox::status().as_str()
+    } else {
+        "off"
+    }
+}
+
+fn add_sandbox_metric(metrics: &mut serde_json::Value, shell_on: bool) {
+    if let Some(obj) = metrics.as_object_mut() {
+        obj.insert("shell_sandbox".into(), serde_json::Value::from(sandbox_state(shell_on)));
+    }
+}
+
 fn add_token_metrics(metrics: &mut serde_json::Value, u: &harness_model::UsageTotals) {
     if let Some(obj) = metrics.as_object_mut() {
         obj.insert("tokens_prompt".into(), json!(u.prompt));
@@ -545,6 +562,15 @@ fn add_token_metrics(metrics: &mut serde_json::Value, u: &harness_model::UsageTo
 
 #[cfg(test)]
 mod retry_metrics_tests {
+    #[test]
+    fn shell_sandbox_metric() {
+        let mut m = serde_json::json!({});
+        super::add_sandbox_metric(&mut m, false);
+        assert_eq!(m["shell_sandbox"], "off");
+        super::add_sandbox_metric(&mut m, true);
+        assert_eq!(m["shell_sandbox"], "landlock");
+    }
+
     use super::*;
 
     #[test]

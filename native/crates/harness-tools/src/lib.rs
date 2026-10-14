@@ -1,5 +1,5 @@
 //! Min coding tool pack (ADR-005). Outside core.
-//! Workspace-bound paths. Shell is opt-in. Not an OS sandbox.
+//! Workspace-bound paths. Shell is opt-in and runs in a Landlock sandbox.
 
 mod bound;
 mod filesystem;
@@ -7,18 +7,19 @@ pub mod guard;
 mod git;
 mod patch;
 mod safe_fs;
+pub mod sandbox;
 mod search;
 mod shell;
 mod tests_tool;
 pub mod proc;
 mod workspace;
 
-pub use guard::{deny_code, REASON_ENV_READ, REASON_GIT_WRITE, REASON_PATH_ESCAPE};
+pub use guard::{deny_code, REASON_ENV_READ, REASON_GIT_WRITE, REASON_PATH_ESCAPE, REASON_SHELL_SANDBOX};
 pub use filesystem::{ListFiles, ReadFile, WriteFile};
 pub use git::{GitDiff, GitStatus};
 pub use patch::ApplyPatch;
 pub use search::Search;
-pub use shell::RunShell;
+pub use shell::{run_sandboxed, RunShell};
 pub use tests_tool::RunTests;
 pub use workspace::{Workspace, WorkspaceError};
 
