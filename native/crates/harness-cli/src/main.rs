@@ -384,6 +384,7 @@ fn ask_cmd(
         commit_sha: detect_commit_sha(),
         machine_class: format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH),
         source_run_jsonl: path.display().to_string(),
+        oracle_success: None,
     };
     let mut metrics = aggregate(&result.events, &meta);
     if let Some((n, wait_ms, reasons)) = model_retries {
@@ -501,6 +502,7 @@ fn replay_cmd(
             commit_sha: detect_commit_sha(),
             machine_class: format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH),
             source_run_jsonl: run.display().to_string(),
+            oracle_success: None,
         };
         let metrics = aggregate(&events, &meta);
         write_metrics(&out, &metrics)?;

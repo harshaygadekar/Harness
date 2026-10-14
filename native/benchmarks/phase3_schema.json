@@ -73,15 +73,34 @@
     "model_retries": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["count", "wait_ms", "reasons"],
+      "required": [
+        "count",
+        "wait_ms",
+        "reasons"
+      ],
       "description": "Provider retries in the HTTP model adapter (only 429, 503 and connection errors before any reply byte). Labels and counts only, never error text.",
       "properties": {
-        "count": { "type": "integer", "minimum": 0 },
-        "wait_ms": { "type": "integer", "minimum": 0 },
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "wait_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
         "reasons": {
           "type": "object",
-          "propertyNames": { "enum": ["http_429", "http_503", "connection"] },
-          "additionalProperties": { "type": "integer", "minimum": 0 }
+          "propertyNames": {
+            "enum": [
+              "http_429",
+              "http_503",
+              "connection"
+            ]
+          },
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
         }
       }
     },
@@ -96,7 +115,12 @@
     },
     "model_mode": {
       "type": "string",
-      "enum": ["fake", "scripted", "live", "other"]
+      "enum": [
+        "fake",
+        "scripted",
+        "live",
+        "other"
+      ]
     },
     "measured_at": {
       "type": "string",
@@ -105,46 +129,113 @@
     },
     "exit_status": {
       "type": "string",
-      "enum": ["success", "fail", "timeout", "max_turns"]
+      "enum": [
+        "success",
+        "fail",
+        "timeout",
+        "max_turns"
+      ]
     },
     "task_success": {
-      "type": "boolean"
+      "type": [
+        "boolean",
+        "null"
+      ],
+      "description": "External oracle result only; null when no oracle result is given. Never derived from run status."
     },
     "run_ok": {
       "type": "boolean",
       "description": "Harness finished without crash; independent of task_success"
     },
-    "total_tool_calls": { "$ref": "#/$defs/non_negative_int" },
-    "tool_calls_success": { "$ref": "#/$defs/non_negative_int" },
-    "tool_calls_fail": { "$ref": "#/$defs/non_negative_int" },
-    "gate_denies": { "$ref": "#/$defs/non_negative_int" },
-    "tool_errors": { "$ref": "#/$defs/non_negative_int" },
-    "unnecessary_tool_calls": { "$ref": "#/$defs/int_or_unknown" },
-    "redundant_reads": { "$ref": "#/$defs/int_or_unknown" },
-    "redundant_searches": { "$ref": "#/$defs/int_or_unknown" },
-    "duplicate_tool_calls": { "$ref": "#/$defs/int_or_unknown" },
-    "useful_actions": { "$ref": "#/$defs/int_or_unknown" },
-    "writes": { "$ref": "#/$defs/non_negative_int" },
-    "tests_run": { "$ref": "#/$defs/non_negative_int" },
-    "files_read": { "$ref": "#/$defs/non_negative_int" },
-    "files_modified": { "$ref": "#/$defs/non_negative_int" },
+    "total_tool_calls": {
+      "$ref": "#/$defs/non_negative_int"
+    },
+    "tool_calls_success": {
+      "$ref": "#/$defs/non_negative_int"
+    },
+    "tool_calls_fail": {
+      "$ref": "#/$defs/non_negative_int"
+    },
+    "gate_denies": {
+      "$ref": "#/$defs/non_negative_int"
+    },
+    "tool_errors": {
+      "$ref": "#/$defs/non_negative_int"
+    },
+    "unnecessary_tool_calls": {
+      "$ref": "#/$defs/int_or_unknown"
+    },
+    "redundant_reads": {
+      "$ref": "#/$defs/int_or_unknown"
+    },
+    "redundant_searches": {
+      "$ref": "#/$defs/int_or_unknown"
+    },
+    "duplicate_tool_calls": {
+      "$ref": "#/$defs/int_or_unknown"
+    },
+    "useful_actions": {
+      "$ref": "#/$defs/int_or_unknown"
+    },
+    "writes": {
+      "$ref": "#/$defs/non_negative_int"
+    },
+    "tests_run": {
+      "$ref": "#/$defs/non_negative_int"
+    },
+    "files_read": {
+      "$ref": "#/$defs/non_negative_int"
+    },
+    "files_modified": {
+      "$ref": "#/$defs/non_negative_int"
+    },
     "files_read_paths": {
       "type": "array",
-      "items": { "type": "string" }
+      "items": {
+        "type": "string"
+      }
     },
     "files_modified_paths": {
       "type": "array",
-      "items": { "type": "string" }
+      "items": {
+        "type": "string"
+      }
     },
-    "model_turns": { "$ref": "#/$defs/non_negative_int" },
-    "tokens_prompt": { "$ref": "#/$defs/int_or_unknown" },
-    "tokens_completion": { "$ref": "#/$defs/int_or_unknown" },
-    "tokens_total": { "$ref": "#/$defs/int_or_unknown" },
-    "tool_schema_bytes": { "$ref": "#/$defs/int_or_unknown" },
-    "context_bytes": { "$ref": "#/$defs/int_or_unknown" },
-    "wall_time_ms": { "$ref": "#/$defs/non_negative_int" },
-    "time_to_first_useful_action_ms": { "$ref": "#/$defs/int_or_unknown" },
-    "time_to_success_ms": { "$ref": "#/$defs/int_or_unknown" },
+    "model_turns": {
+      "$ref": "#/$defs/non_negative_int"
+    },
+    "tokens_prompt": {
+      "$ref": "#/$defs/int_or_unknown"
+    },
+    "tokens_completion": {
+      "$ref": "#/$defs/int_or_unknown"
+    },
+    "tokens_total": {
+      "$ref": "#/$defs/int_or_unknown"
+    },
+    "tool_schema_bytes": {
+      "$ref": "#/$defs/int_or_unknown"
+    },
+    "context_bytes": {
+      "$ref": "#/$defs/int_or_unknown"
+    },
+    "wall_time_ms": {
+      "$ref": "#/$defs/non_negative_int"
+    },
+    "time_to_first_useful_action_ms": {
+      "$ref": "#/$defs/int_or_unknown"
+    },
+    "time_to_success_ms": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/int_or_unknown"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Only when the oracle passed; else null."
+    },
     "source_run_jsonl": {
       "type": "string",
       "minLength": 1
@@ -162,11 +253,27 @@
       "additionalProperties": false,
       "description": "Optional derived rates; never replace raw counters; not a single score",
       "properties": {
-        "unnecessary_rate": { "type": "number", "minimum": 0 },
-        "redundant_read_rate": { "type": "number", "minimum": 0 },
-        "fail_rate": { "type": "number", "minimum": 0 },
-        "useful_actions_per_turn": { "type": "number", "minimum": 0 }
+        "unnecessary_rate": {
+          "type": "number",
+          "minimum": 0
+        },
+        "redundant_read_rate": {
+          "type": "number",
+          "minimum": 0
+        },
+        "fail_rate": {
+          "type": "number",
+          "minimum": 0
+        },
+        "useful_actions_per_turn": {
+          "type": "number",
+          "minimum": 0
+        }
       }
+    },
+    "run_status": {
+      "type": "string",
+      "description": "Run status from the done event, as written by the runner (e.g. Succeeded, MaxSteps, Failed)."
     }
   },
   "$defs": {
@@ -176,8 +283,14 @@
     },
     "int_or_unknown": {
       "oneOf": [
-        { "type": "integer", "minimum": 0 },
-        { "type": "string", "const": "unknown" }
+        {
+          "type": "integer",
+          "minimum": 0
+        },
+        {
+          "type": "string",
+          "const": "unknown"
+        }
       ]
     }
   }

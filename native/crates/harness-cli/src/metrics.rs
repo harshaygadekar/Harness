@@ -19,6 +19,8 @@ pub struct MetricsMeta {
     pub commit_sha: String,
     pub machine_class: String,
     pub source_run_jsonl: String,
+    /// External oracle result (e.g. cargo test after the run). None = not given -> task_success null.
+    pub oracle_success: Option<bool>,
 }
 
 impl Default for MetricsMeta {
@@ -31,6 +33,7 @@ impl Default for MetricsMeta {
             commit_sha: detect_commit_sha(),
             machine_class: format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH),
             source_run_jsonl: "unknown".into(),
+            oracle_success: None,
         }
     }
 }
@@ -257,37 +260,41 @@ pub fn aggregate(events: &[RunEvent], meta: &MetricsMeta) -> Value {
     };
 
     let status_lower = done_status.to_lowercase();
-    let (exit_status, task_success, run_ok) = if status_lower.contains("succeed") {
-        ("success", true, true)
+    let (exit_status, run_ok) = if status_lower.contains("succeed") {
+        ("success", true)
     } else if status_lower.contains("max") {
-        ("max_turns", false, true)
+        ("max_turns", true)
     } else if status_lower.contains("timeout") {
-        ("timeout", false, true)
+        ("timeout", true)
     } else if status_lower.contains("fail") || status_lower.contains("error") {
         // harness finished with Fail status still counts as run_ok if Done was emitted
-        ("fail", false, t_done.is_some())
+        ("fail", t_done.is_some())
     } else if t_done.is_some() {
-        ("fail", false, true)
+        ("fail", true)
     } else {
-        ("fail", false, false)
+        ("fail", false)
     };
 
-    // task_success: oracle-independent heuristic (Done=Succeeded or any passing run_tests).
-    // exit_status is the stop reason from `done` only; a passing run_tests must not
-    // overwrite it (T7 H2: tests passed but the run stopped at MaxSteps).
-    let task_success = task_success || success_ts.is_some();
+    // task_success comes ONLY from an external oracle result (meta.oracle_success); never from the
+    // run status and never from a passing run_tests. Without an oracle result it is null.
+    // (T1 v2 rerun H1: an empty reply ended the run "Succeeded" while the oracle failed.)
+    let task_success: Value = match meta.oracle_success {
+        Some(b) => json!(b),
+        None => Value::Null,
+    };
 
     let time_to_first_useful: Value = match (t0, first_useful_ts) {
         (Some(a), Some(b)) if b >= a => json!(b - a),
         _ => json!("unknown"),
     };
-    let time_to_success: Value = if task_success {
+    // Only when the oracle passed; else null.
+    let time_to_success: Value = if meta.oracle_success == Some(true) {
         match (t0, success_ts.or(t_done)) {
             (Some(a), Some(b)) if b >= a => json!(b - a),
-            _ => json!("unknown"),
+            _ => Value::Null,
         }
     } else {
-        json!("unknown")
+        Value::Null
     };
 
     let unnecessary = redundant_reads + redundant_searches; // heuristic floor; not full M1 oracle
@@ -314,6 +321,7 @@ pub fn aggregate(events: &[RunEvent], meta: &MetricsMeta) -> Value {
         "model_mode": model_mode,
         "measured_at": measured_at_ist(),
         "exit_status": exit_status,
+        "run_status": done_status,
         "task_success": task_success,
         "run_ok": run_ok,
         "total_tool_calls": total_tool_calls,
@@ -391,7 +399,9 @@ mod tests {
         assert_eq!(m["total_tool_calls"], 4);
         assert_eq!(m["redundant_reads"], 1);
         assert_eq!(m["gate_denies"], 1);
-        assert_eq!(m["task_success"], true);
+        assert_eq!(m["task_success"], Value::Null); // no oracle given
+        assert_eq!(m["run_status"], "Succeeded");
+        assert_eq!(m["time_to_success_ms"], Value::Null);
         assert_eq!(m["tests_run"], 1);
         assert!(m.get("score").is_none());
     }
@@ -407,8 +417,40 @@ mod tests {
         ];
         let m = aggregate(&events, &MetricsMeta::default());
         assert_eq!(m["exit_status"], "max_turns");
-        assert_eq!(m["task_success"], true);
+        assert_eq!(m["run_status"], "MaxSteps");
+        assert_eq!(m["task_success"], Value::Null); // passing run_tests is not an oracle
         assert_eq!(m["run_ok"], true);
+    }
+
+    #[test]
+    fn empty_reply_succeeded_status_is_not_task_success() {
+        // Core ends the run "Succeeded" on a reply with no tool calls (even an empty one).
+        let events = vec![
+            RunEvent::model_request(1, 2),
+            RunEvent::model_response(None, vec![]),
+            RunEvent::done("Succeeded", 2),
+        ];
+        let m = aggregate(&events, &MetricsMeta::default());
+        assert_eq!(m["run_status"], "Succeeded");
+        assert_eq!(m["exit_status"], "success");
+        assert_eq!(m["task_success"], Value::Null);
+        assert_eq!(m["time_to_success_ms"], Value::Null);
+    }
+
+    #[test]
+    fn task_success_follows_oracle_only() {
+        let ev = vec![RunEvent::model_request(1, 2), RunEvent::done("Succeeded", 1)];
+        let mut meta = MetricsMeta::default();
+        meta.oracle_success = Some(false);
+        let m = aggregate(&ev, &meta);
+        assert_eq!(m["task_success"], false);
+        assert_eq!(m["time_to_success_ms"], Value::Null);
+        let ev2 = vec![RunEvent::model_request(1, 2), RunEvent::done("MaxSteps", 50)];
+        meta.oracle_success = Some(true);
+        let m2 = aggregate(&ev2, &meta);
+        assert_eq!(m2["task_success"], true);
+        assert_eq!(m2["run_status"], "MaxSteps");
+        assert!(!m2["time_to_success_ms"].is_string());
     }
 
     #[test]
