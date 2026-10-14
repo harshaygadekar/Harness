@@ -14,3 +14,6 @@ T1-trackB-harness-isolated-cap50-rerun3-H2-20261014T195217	True	Succeeded	60803	
 T1-trackB-fx-isolated-cap50-rerun3-F3-20261014T195324	True	exit 0	55883	43900	8	57954	648	12	65725	766	5
 T1-trackB-harness-isolated-cap50-rerun3-H3-20261014T195426	False	Succeeded	6256	4565	1	1289	10	2	1289	10	None
 ```
+
+Review note: the 8ce5135 proxy pin was reviewed by Jessie after the 6 runs, and it passed.
+Result (weak model (Gemini Flash-Lite) through the proxy, build 7205729): fx 3 of 3, Harness 1 of 3. H1 and H3 are failures, not reruns. No win claims.
