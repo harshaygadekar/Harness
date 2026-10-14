@@ -51,6 +51,7 @@ Opaque host bag passed into tools: `data: dict`, `step: int`. Not a credential s
 
 1. No model registered → `failed` + `SafeError(code="NO_MODEL", ...)`.
 2. Assistant with no `tool_calls` → `succeeded`.
+   `succeeded` means only that the loop ended normally. It does not mean that the task passed. An empty reply also gives `succeeded`. Task pass comes only from an outside check, such as a benchmark oracle. Metrics and claim tables must not read `succeeded` as a pass.
 3. Gate Deny (or non-Allow) → tool-role observation `DENIED: …`; do not call `tool.call`.
 4. Cancel before/during steps → `cancelled`; do not start a **new** tool call after cancel (C5).
 5. `max_steps` exhausted → `max_steps` + `SafeError(code="MAX_STEPS", ...)`.
