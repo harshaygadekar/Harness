@@ -114,7 +114,7 @@ if ! grep -q "OVERALL PASS" "$D/key_isolation_check.txt"; then echo "key isolati
 PROXY_PID=$(pgrep -u benchproxy -f "proxy.py $PORT" | head -1); PROXY_UID=$(ps -o uid= -p "$PROXY_PID" 2>/dev/null | tr -d ' ')
 echo "$PORT" > "$D/proxy_port"
 # Right before the agent starts: the proxy PID must still be alive; else abort before any request.
-if [ -z "$PROXY_PID" ] || ! kill -0 "$PROXY_PID" 2>/dev/null && ! sudo -n kill -0 "$PROXY_PID" 2>/dev/null; then echo "proxy PID not alive before agent start; run not started" > "$D/ABORTED.txt"; exit 8; fi
+if [ -z "$PROXY_PID" ] || { ! kill -0 "$PROXY_PID" 2>/dev/null && ! sudo -n kill -0 "$PROXY_PID" 2>/dev/null; }; then echo "proxy PID not alive before agent start; run not started" > "$D/ABORTED.txt"; exit 8; fi
 S=$(date +%s%3N)
 if [ -n "$FAKE" ]; then
   echo "FAKE AGENT (test only): $FAKE" > "$D/agent_cmd.txt"
