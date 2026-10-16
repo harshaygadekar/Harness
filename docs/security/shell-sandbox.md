@@ -22,6 +22,7 @@ The operating system enforces the boundary. Text matching does not.
      - `.git`: shell writes to `.git` stay possible. This is a known limit. Those cases stay failing and are not counted as passing.
    - Other processes' environment (`/proc/*/environ`): Landlock does not protect `/proc`. The protection is that the agent runs as `benchagent` and the proxy runs as `benchproxy`. The `ps` check and the user check in `run_isolated.sh` stay required.
    - Network: deny TCP bind and connect (ABI 4) and use the ABI 6 scopes (signals and abstract UNIX sockets). UDP is not controlled by Landlock and stays open. This is a known limit.
+   - Mode, owner and time changes: Landlock does not control `chmod`, `chown` and time changes. The shell can change these on any file that `benchagent` owns, also outside the workspace. File contents outside stay safe. This is a known limit (Walter, case 6). It is safe only if `benchagent` owns no files outside its workspace, its private `/tmp` folders and its home folder.
    - Crates: download them before the run and set `CARGO_NET_OFFLINE=true`.
    - Hard mode only: require full support for the ABI level we use. If the kernel supports less, the shell turns off. The crate's best-effort mode is not allowed.
 2. Environment: the shell starts with `env -i` plus a short allow list (`PATH`, `HOME` set to the workspace, `LANG`, `CARGO_HOME`). No keys.
