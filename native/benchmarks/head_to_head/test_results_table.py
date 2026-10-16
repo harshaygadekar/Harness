@@ -18,11 +18,44 @@ with tempfile.TemporaryDirectory() as t:
     rows = {l.split("\t")[0]: l for l in out.splitlines()[1:]}
     check("exit 0", r.returncode == 0)
     check("clean run counted", "REFUSED" not in rows["clean"])
-    check("429-only run counted (429 is not upstream-affected)", "REFUSED" not in rows["r429"])
+    check("429 run refused (429 is upstream-affected, like 503)", "REFUSED: upstream-affected (503=0, 429=1, transport_errors=0" in rows["r429"])
     check("client-side error row only: run counted", "REFUSED" not in rows["rclient"])
-    check("503 run refused with counts", "REFUSED: upstream-affected (503=1, transport_errors=0" in rows["r503"])
-    check("transport error run refused with counts", "REFUSED: upstream-affected (503=0, transport_errors=2" in rows["rerr"])
+    check("503 run refused with counts", "REFUSED: upstream-affected (503=1, 429=0, transport_errors=0" in rows["r503"])
+    check("transport error run refused with counts", "REFUSED: upstream-affected (503=0, 429=0, transport_errors=2" in rows["rerr"])
     check("run_env upstream_affected flag refused", "run_env flag=True" in rows["rflag"])
-    check("summary line: 3 counted, 3 of 3, 3 refused", "counted runs: 3; oracle success 3 of 3; refused: 3" in err)
-    check("refused runs listed on stderr", err.count("REFUSED ") == 3)
+    check("summary line: 2 counted, 2 of 2, 4 refused", "counted runs: 2; oracle success 2 of 2; refused: 4" in err)
+    check("refused runs listed on stderr", err.count("REFUSED ") == 4)
+    check("proxy_429 column present, 0 for clean run", out.splitlines()[0].split("\t")[-1] == "proxy_429" and rows["clean"].split("\t")[-1] == "0")
+
+def mklog(root, name, log_lines, summary=None):
+    """A run folder in the older layout: proxy.log only, no proxy_usage.jsonl."""
+    d = os.path.join(root, name); os.makedirs(d)
+    json.dump(summary if summary is not None else {"oracle_success": True, "stop_reason": "exit 0"}, open(os.path.join(d, "summary.json"), "w"))
+    open(os.path.join(d, "proxy.log"), "w").write("".join(l + "\n" for l in log_lines))
+    return d
+OK = "POST /chat/completions -> 200"
+with tempfile.TemporaryDirectory() as t:
+    ds = [mklog(t, "log_clean", ["oai_stream_proxy on 127.0.0.1:8787 sig_mode=reinject", OK, OK]),
+          mklog(t, "log503", [OK, "POST /chat/completions -> 503", OK]),
+          mklog(t, "log429", [OK, "2026-10-11T05:21:28.000+05:30 POST /chat/completions -> 429", OK]),
+          mklog(t, "logpipe", [OK, "-" * 40, "Exception occurred during processing of request from ('127.0.0.1', 5)", "Traceback (most recent call last):",
+                               "    self.wfile.write(out)", "BrokenPipeError: [Errno 32] Broken pipe", "-" * 40]),
+          mklog(t, "logconn", [OK, "-" * 40, "Exception occurred during processing of request from ('127.0.0.1', 5)", "Traceback (most recent call last):",
+                               "    conn.connect()", "ConnectionRefusedError: [Errno 111] Connection refused", "-" * 40]),
+          mklog(t, "oracle_none", [OK], {"oracle_success": None, "stop_reason": "exit 0"}),
+          mklog(t, "oracle_missing", [OK], {"stop_reason": "exit 0"}),
+          mklog(t, "zero200", ["POST /chat/completions -> 400"]),
+          mk(t, "zero200_jsonl", [400], {})]
+    r = subprocess.run([sys.executable, os.path.join(HERE, "results_table.py")] + ds, capture_output=True, text=True)
+    rows = {l.split("\t")[0]: l for l in r.stdout.splitlines()[1:]}
+    check("proxy.log only: clean run counted", "REFUSED" not in rows["log_clean"])
+    check("proxy.log only: 503 run refused", "REFUSED: upstream-affected (503=1, 429=0, transport_errors=0" in rows["log503"])
+    check("proxy.log only: 429 run refused", "REFUSED: upstream-affected (503=0, 429=1, transport_errors=0" in rows["log429"])
+    check("proxy.log only: client broken pipe traceback is not a transport error", "REFUSED" not in rows["logpipe"])
+    check("proxy.log only: upstream traceback is a transport error", "transport_errors=1" in rows["logconn"])
+    check("oracle_success null refused", "REFUSED: no oracle result" in rows["oracle_none"])
+    check("oracle_success missing refused", "REFUSED: no oracle result" in rows["oracle_missing"])
+    check("zero 200 replies (proxy.log) refused", "REFUSED: zero 200 replies" in rows["zero200"])
+    check("zero 200 replies (jsonl) refused", "REFUSED: zero 200 replies" in rows["zero200_jsonl"])
+    check("summary line: 2 counted, 7 refused", "counted runs: 2; oracle success 2 of 2; refused: 7" in r.stderr)
 sys.exit(1 if fails else 0)
