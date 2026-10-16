@@ -99,12 +99,12 @@ fn shell_read_env_and_homes_denied() {
         assert!(!ok, "{c}: {out}");
         assert!(!out.contains("FAKE_ENV_MARKER") && !out.contains("OUTSIDE-SECRET"), "{c}: {out}");
     }
-    // Other files in the same folders stay readable. A new file in a folder
-    // that holds a .env file is readable from the next call (known limit).
-    let (ok, out) = fx.shell("cat README.md && echo x > sub/y && ls -a");
+    // Other files in the same folders stay readable. In a folder that holds
+    // a .env file the shell cannot make new files (known limit).
+    let (ok, out) = fx.shell("cat README.md && ls -a");
     assert!(ok, "{out}");
-    let (ok, out) = fx.shell("cat sub/y");
-    assert!(ok && out.contains('x'), "{out}");
+    let (ok, out) = fx.shell("echo x > new_in_env_dir.txt");
+    assert!(!ok, "{out}");
     // /home/benchproxy (key file home) and the operator home are denied.
     let real_home = std::env::var("HOME").unwrap();
     for c in ["ls /home/benchproxy".to_string(), "cat /home/benchproxy/keys.env".to_string(), format!("ls {real_home}"), "ls /opt/benchproxy".to_string()] {
@@ -239,4 +239,52 @@ fn outside_metadata_change_denied() {
     let before = fs::metadata(&f).unwrap().permissions().mode();
     let (_ok, _) = fx.shell("chmod 0777 ../out/secret.txt");
     assert_eq!(fs::metadata(&f).unwrap().permissions().mode(), before, "chmod outside went through");
+}
+
+// Should-fix 1: a .env under target/ or node_modules/ is not readable.
+#[test]
+fn shell_env_under_target_and_node_modules_denied() {
+    let fx = Fx::new("envskip");
+    for d in ["target/debug", "node_modules/pkg"] {
+        fs::create_dir_all(fx.ws.join(d)).unwrap();
+        fs::write(fx.ws.join(d).join(".env"), "FAKE_ENV_MARKER=9\n").unwrap();
+    }
+    for c in ["cat target/debug/.env", "cat node_modules/pkg/.env"] {
+        let (ok, out) = fx.shell(c);
+        assert!(!ok && !out.contains("FAKE_ENV_MARKER"), "{c}: {out}");
+    }
+}
+
+// Should-fix 2: a folder that cannot be listed counts as holding a .env;
+// the sandbox then does not start (fail closed).
+#[test]
+fn shell_unreadable_folder_fails_closed() {
+    use std::os::unix::fs::PermissionsExt;
+    let fx = Fx::new("noread");
+    fs::create_dir_all(fx.ws.join("locked")).unwrap();
+    fs::write(fx.ws.join("locked/.env"), "FAKE_ENV_MARKER=7\n").unwrap();
+    fs::set_permissions(fx.ws.join("locked"), fs::Permissions::from_mode(0o000)).unwrap();
+    let (ok, out) = fx.shell("echo ran > ran.txt");
+    fs::set_permissions(fx.ws.join("locked"), fs::Permissions::from_mode(0o755)).unwrap();
+    assert!(!ok, "{out}");
+    assert!(!fx.ws.join("ran.txt").exists(), "command ran: {out}");
+}
+
+// Should-fix 3: the shell cannot overwrite, truncate, delete, move or
+// hard-link a workspace .env.
+#[test]
+fn shell_env_write_truncate_remove_denied() {
+    let fx = Fx::new("envw");
+    fs::write(fx.ws.join(".env"), "FAKE_ENV_MARKER=1\n").unwrap();
+    fs::write(fx.ws.join("sub/.env"), "FAKE_ENV_MARKER=3\n").unwrap();
+    for c in [
+        "echo pwn > .env", "echo pwn >> .env", ": > .env", "truncate -s 0 .env", "rm -f .env", "mv .env moved",
+        "mv README.md .env", "ln .env sub/hl", "echo pwn > sub/.env", "rm -f sub/.env", "cp README.md sub/.env",
+    ] {
+        let (ok, out) = fx.shell(c);
+        assert!(!ok, "{c}: {out}");
+        assert_eq!(fs::read_to_string(fx.ws.join(".env")).unwrap(), "FAKE_ENV_MARKER=1\n", "{c}");
+        assert_eq!(fs::read_to_string(fx.ws.join("sub/.env")).unwrap(), "FAKE_ENV_MARKER=3\n", "{c}");
+    }
+    assert!(!fx.ws.join("moved").exists() && !fx.ws.join("sub/hl").exists());
 }

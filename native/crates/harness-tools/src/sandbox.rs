@@ -34,6 +34,7 @@ const EXECUTE: u64 = 1 << 0;
 const WRITE_FILE: u64 = 1 << 1;
 const READ_FILE: u64 = 1 << 2;
 const READ_DIR: u64 = 1 << 3;
+const MAKE_DIR: u64 = 1 << 7;
 const TRUNCATE: u64 = 1 << 14;
 const IOCTL_DEV: u64 = 1 << 15;
 /// All file-system rights up to ABI 5.
@@ -166,24 +167,29 @@ fn has_env_below(dir: &Path, depth: usize) -> bool {
     if depth > 32 {
         return true;
     }
-    let Ok(rd) = std::fs::read_dir(dir) else { return false };
+    // Fail closed: a folder we cannot read may hold a .env file.
+    let Ok(rd) = std::fs::read_dir(dir) else { return true };
     rd.flatten().any(|e| {
         let ft = e.file_type();
         if is_env(&e.file_name()) && !ft.as_ref().map(|t| t.is_dir()).unwrap_or(false) {
             return true;
         }
-        let skip = ["target", "node_modules"].contains(&e.file_name().to_string_lossy().as_ref());
-        ft.map(|t| t.is_dir()).unwrap_or(false) && !skip && has_env_below(&e.path(), depth + 1)
+        // No folder is skipped (also target/ and node_modules/).
+        ft.map(|t| t.is_dir()).unwrap_or(false) && has_env_below(&e.path(), depth + 1)
     })
 }
 
-/// Workspace rules. A folder with a `.env*` file below it gets every right
-/// except read and execute of files; its other entries get full rights.
+/// Workspace rules. A folder with a `.env*` file below it gets only list and
+/// make-folder rights: no read, write, truncate, remove or refer rights that
+/// would reach the `.env` file (Landlock rights on a folder cover all files
+/// below it). Its other entries get full rights by their own rules. Cost: in
+/// such a folder the shell cannot make, write or delete files (known limit;
+/// runs use a clean copy with no .env).
 fn allow_workspace(rs: &Ruleset, dir: &Path, depth: usize) -> std::io::Result<()> {
     if !has_env_below(dir, depth) {
         return rs.allow(dir, FS_ALL);
     }
-    rs.allow(dir, FS_ALL & !READ_FILE & !EXECUTE)?;
+    rs.allow(dir, READ_DIR | MAKE_DIR)?;
     for e in std::fs::read_dir(dir)?.flatten() {
         if is_env(&e.file_name()) {
             continue;
