@@ -231,7 +231,7 @@ fn cargo_test_runs_in_sandbox_on_fixtures() {
 // file mode, owner or time changes. The shell can chmod, chown (to itself) and
 // touch -m a file outside the workspace. Contents stay safe.
 #[test]
-#[ignore = "KNOWN ESCAPE: chmod/touch -m outside the workspace are not blocked by Landlock"]
+#[ignore = "KNOWN LIMIT (limit 3): chmod/touch -m outside the workspace are not blocked by Landlock"]
 fn outside_metadata_change_denied() {
     let fx = Fx::new("meta");
     let f = fx.out.join("secret.txt");
