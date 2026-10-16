@@ -45,7 +45,9 @@ with tempfile.TemporaryDirectory() as t:
           mklog(t, "oracle_none", [OK], {"oracle_success": None, "stop_reason": "exit 0"}),
           mklog(t, "oracle_missing", [OK], {"stop_reason": "exit 0"}),
           mklog(t, "zero200", ["POST /chat/completions -> 400"]),
-          mk(t, "zero200_jsonl", [400], {})]
+          mk(t, "zero200_jsonl", [400], {}),
+          os.path.join(t, "noproxy")]
+    os.makedirs(ds[-1]); json.dump({"oracle_success": True, "stop_reason": "exit 0"}, open(os.path.join(ds[-1], "summary.json"), "w"))
     r = subprocess.run([sys.executable, os.path.join(HERE, "results_table.py")] + ds, capture_output=True, text=True)
     rows = {l.split("\t")[0]: l for l in r.stdout.splitlines()[1:]}
     check("proxy.log only: clean run counted", "REFUSED" not in rows["log_clean"])
@@ -57,5 +59,6 @@ with tempfile.TemporaryDirectory() as t:
     check("oracle_success missing refused", "REFUSED: no oracle result" in rows["oracle_missing"])
     check("zero 200 replies (proxy.log) refused", "REFUSED: zero 200 replies" in rows["zero200"])
     check("zero 200 replies (jsonl) refused", "REFUSED: zero 200 replies" in rows["zero200_jsonl"])
-    check("summary line: 2 counted, 7 refused", "counted runs: 2; oracle success 2 of 2; refused: 7" in r.stderr)
+    check("no proxy file refused as no proxy log", "REFUSED: no proxy log" in rows["noproxy"])
+    check("summary line: 2 counted, 8 refused", "counted runs: 2; oracle success 2 of 2; refused: 8" in r.stderr)
 sys.exit(1 if fails else 0)

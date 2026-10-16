@@ -91,8 +91,10 @@ def upstream_reason(d):
     if flag or c["n503"] or c["n429"] or c["nerr"]:
         return (f"upstream-affected (503={c['n503']}, 429={c['n429']}, transport_errors={c['nerr']}, "
                 f"run_env flag={flag})")
+    if proxy_counts(d) is None:
+        return "no proxy log (no proxy_usage.jsonl or proxy.log)"
     if c["n200"] == 0:
-        return "zero 200 replies" + ("" if proxy_counts(d) is not None else " (no proxy_usage.jsonl or proxy.log)")
+        return "zero 200 replies"
     return None
 
 
