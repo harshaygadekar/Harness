@@ -155,6 +155,9 @@ for r in rows: e["proxy_status_counts"][str(r["status"])]=e["proxy_status_counts
 e["proxy_input_tokens"]=sum(r.get("input_tokens") or 0 for r in rows); e["proxy_output_tokens"]=sum(r.get("output_tokens") or 0 for r in rows)
 e["proxy_proc_check"]=json.load(open(os.path.join(D,"proxy_proc_check.json")))
 e["agent_timeout_s"]=int(os.environ.get("AGENT_TIMEOUT_S","0"))
+try: _m=json.load(open(os.path.join(D,"rec","metrics.json")))
+except (OSError,ValueError): _m={}
+e["shell_sandbox"]=_m.get("shell_sandbox"); e["landlock_abi"]=_m.get("landlock_abi")  # ABI < 6: shell refused (fail closed)
 json.dump(e,open(p,"w"),indent=1)
 P
 ls -A "$P" | grep -vE '^(time.txt|rec)$' > "$D/parent_ls.txt"; echo "$MSHA $(sha256sum "$P/MARKER.txt" | cut -c1-64)" > "$D/marker_sha.txt"

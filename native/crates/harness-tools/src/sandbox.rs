@@ -262,12 +262,9 @@ pub fn apply_pre_exec(cmd: &mut Command, rs: &Ruleset, timeout: Duration) {
     // SAFETY: the closure uses only async-signal-safe syscalls, no allocation.
     unsafe {
         cmd.pre_exec(move || {
-            if libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0 {
-                return Err(std::io::Error::last_os_error());
-            }
-            if libc::syscall(SYS_RESTRICT, rfd, 0u32) != 0 {
-                return Err(std::io::Error::last_os_error());
-            }
+            // The supervisor stays OUTSIDE the Landlock domain. Only the
+            // command child is restricted. So the command cannot signal the
+            // supervisor (signal scope), and it stays the subreaper.
             if libc::prctl(libc::PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0) != 0 {
                 return Err(std::io::Error::last_os_error());
             }
@@ -279,7 +276,14 @@ pub fn apply_pre_exec(cmd: &mut Command, rs: &Ruleset, timeout: Duration) {
                 return Err(std::io::Error::last_os_error());
             }
             if pid == 0 {
-                // The command: continue to exec.
+                // The command child: restrict, then continue to exec. On an
+                // error std reports it and the command does not run.
+                if libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                if libc::syscall(SYS_RESTRICT, rfd, 0u32) != 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
                 return Ok(());
             }
             supervise(pid, limit_ns)

@@ -548,6 +548,7 @@ fn sandbox_state(shell_on: bool) -> &'static str {
 fn add_sandbox_metric(metrics: &mut serde_json::Value, shell_on: bool) {
     if let Some(obj) = metrics.as_object_mut() {
         obj.insert("shell_sandbox".into(), serde_json::Value::from(sandbox_state(shell_on)));
+        obj.insert("landlock_abi".into(), serde_json::Value::from(harness_tools::sandbox::kernel_abi()));
     }
 }
 
@@ -569,6 +570,7 @@ mod retry_metrics_tests {
         assert_eq!(m["shell_sandbox"], "off");
         super::add_sandbox_metric(&mut m, true);
         assert_eq!(m["shell_sandbox"], "landlock");
+        assert!(m["landlock_abi"].as_i64().unwrap() >= 6);
     }
 
     use super::*;

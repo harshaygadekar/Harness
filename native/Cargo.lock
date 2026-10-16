@@ -163,6 +163,7 @@ dependencies = [
  "harness-core",
  "harness-model",
  "harness-tools",
+ "libc",
  "serde",
  "serde_json",
 ]

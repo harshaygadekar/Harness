@@ -720,3 +720,54 @@ fn shell_git_hook_write_only() {
 fn shell_udp_send() {
     shell("sh_udp", "python3 -c 'import socket; socket.socket(socket.AF_INET, socket.SOCK_DGRAM).sendto(b\"x\", (\"127.0.0.1\", 9))'");
 }
+
+// ---------- supervisor kill (Jessie blocker) ----------
+
+/// True if any process has `mark` in its command line.
+fn process_with(mark: &str) -> Vec<String> {
+    let mut v = Vec::new();
+    for e in fs::read_dir("/proc").unwrap().flatten() {
+        let n = e.file_name().to_string_lossy().into_owned();
+        if !n.bytes().all(|b| b.is_ascii_digit()) {
+            continue;
+        }
+        if let Ok(c) = fs::read(e.path().join("cmdline")) {
+            let c = String::from_utf8_lossy(&c).replace('\0', " ");
+            if c.contains(mark) {
+                v.push(format!("{n}: {c}"));
+            }
+        }
+    }
+    v
+}
+
+fn assert_no_survivor(tag: &str, cmd_tpl: &str) {
+    let fx = Fixture::new(tag);
+    let mark = format!("HARNESS_MARK_{tag}_{}", std::process::id());
+    let cmd = cmd_tpl.replace("{MARK}", &mark);
+    let _ = run_one(&fx, "run_shell", json!({ "command": cmd }));
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    let left = process_with(&mark);
+    for l in &left {
+        let pid: i32 = l.split(':').next().unwrap().parse().unwrap();
+        unsafe { libc::kill(pid, libc::SIGKILL) };
+    }
+    assert!(left.is_empty(), "[{tag}] processes left after run_shell: {left:?}");
+}
+
+#[test]
+fn shell_kill_supervisor_then_setsid_survivor() {
+    assert_no_survivor("kill_ppid", "setsid sh -c 'sleep 999; : {MARK}' & sleep 0.2; kill -9 $PPID; sleep 999");
+}
+
+#[test]
+fn shell_kill_own_shell_then_setsid_survivor() {
+    assert_no_survivor("kill_self", "setsid sh -c 'sleep 999; : {MARK}' & sleep 0.2; kill -9 $$");
+}
+
+#[test]
+fn shell_cannot_signal_supervisor() {
+    let fx = Fixture::new("sig_sup");
+    let (_ok, out) = run_one(&fx, "run_shell", json!({ "command": "if kill -0 $PPID 2>/dev/null; then echo SIGNAL_REACHED; else echo SIGNAL_DENIED; fi" }));
+    assert!(out.contains("SIGNAL_DENIED") && !out.contains("SIGNAL_REACHED"), "{out}");
+}
