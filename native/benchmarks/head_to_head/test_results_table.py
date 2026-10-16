@@ -39,7 +39,8 @@ with tempfile.TemporaryDirectory() as t:
           mklog(t, "log503", [OK, "POST /chat/completions -> 503", OK]),
           mklog(t, "log429", [OK, "2026-10-11T05:21:28.000+05:30 POST /chat/completions -> 429", OK]),
           mklog(t, "logpipe", [OK, "-" * 40, "Exception occurred during processing of request from ('127.0.0.1', 5)", "Traceback (most recent call last):",
-                               "    self.wfile.write(out)", "BrokenPipeError: [Errno 32] Broken pipe", "-" * 40]),
+                               '  File "/opt/benchproxy/x/proxy.py", line 315, in _fwd', "    self.wfile.write(out)",
+                               '  File "/usr/lib/python3.13/socketserver.py", line 845, in write', "    self._sock.sendall(b)", "BrokenPipeError: [Errno 32] Broken pipe", "-" * 40]),
           mklog(t, "logconn", [OK, "-" * 40, "Exception occurred during processing of request from ('127.0.0.1', 5)", "Traceback (most recent call last):",
                                "    conn.connect()", "ConnectionRefusedError: [Errno 111] Connection refused", "-" * 40]),
           mklog(t, "oracle_none", [OK], {"oracle_success": None, "stop_reason": "exit 0"}),
@@ -61,4 +62,23 @@ with tempfile.TemporaryDirectory() as t:
     check("zero 200 replies (jsonl) refused", "REFUSED: zero 200 replies" in rows["zero200_jsonl"])
     check("no proxy file refused as no proxy log", "REFUSED: no proxy log" in rows["noproxy"])
     check("summary line: 2 counted, 8 refused", "counted runs: 2; oracle success 2 of 2; refused: 8" in r.stderr)
+D = "-" * 40; EXC = "Exception occurred during processing of request from ('127.0.0.1', 5)"; TB = "Traceback (most recent call last):"
+with tempfile.TemporaryDirectory() as t:
+    ds = [mklog(t, "up_sendall", [OK, D, EXC, TB, '  File "/opt/benchproxy/x/proxy.py", line 403, in _fwd',
+                                  "    conn.request(self.command, u.path + path, body=body, headers=hdrs)",
+                                  '  File "/usr/lib/python3.13/http/client.py", line 1057, in send',
+                                  "    self.sock.sendall(data)", "    ~~~~~~~~~~~~~~~~~^^^^^^", "BrokenPipeError: [Errno 32] Broken pipe", D]),
+          mklog(t, "chained", [OK, D, EXC, TB, '  File "/opt/benchproxy/x/proxy.py", line 405, in _fwd', "    r = conn.getresponse()",
+                               "ConnectionResetError: [Errno 104] Connection reset by peer", "",
+                               "During handling of the above exception, another exception occurred:", "", TB,
+                               '  File "/opt/benchproxy/x/proxy.py", line 412, in _fwd', "    self.wfile.write(data)",
+                               "BrokenPipeError: [Errno 32] Broken pipe", D]),
+          mklog(t, "bare_then_503", [OK, TB, '  File "/opt/benchproxy/x/proxy.py", line 440, in _fwd', "    self.wfile.write(out)",
+                                     "BrokenPipeError: [Errno 32] Broken pipe", "POST /chat/completions -> 503", OK])]
+    r = subprocess.run([sys.executable, os.path.join(HERE, "results_table.py")] + ds, capture_output=True, text=True)
+    rows = {l.split("\t")[0]: l for l in r.stdout.splitlines()[1:]}
+    check("upstream sock.sendall failure in http.client: transport_errors=1", "transport_errors=1," in rows["up_sendall"])
+    check("chained upstream error + BrokenPipe on error write: transport_errors=1 (1 block, 1 error)", "transport_errors=1," in rows["chained"])
+    check("client bare traceback (no dash line) then -> 503: refused with 503=1, transport_errors=0",
+          "REFUSED: upstream-affected (503=1, 429=0, transport_errors=0," in rows["bare_then_503"])
 sys.exit(1 if fails else 0)
