@@ -31,12 +31,17 @@ From `rec/run.jsonl` and `proxy_usage.jsonl`:
 
 The same stop now shows in 3 of 4 Harness runs on T1 v2:
 
-| Run | Request 2 tokens in / out |
-|---|---|
-| rerun3 H1 (14 Oct) | 669 / 0 |
-| rerun3 H3 (14 Oct) | 669 / 0 |
-| pair1 H1 (21 Oct) | 669 / 0 |
-| rerun3 H2 (14 Oct) | did not stop; passed the oracle |
+| Run | Build | Request 2 tokens in / out |
+|---|---|---|
+| rerun3 H1 (14 Oct) | `7205729` | 669 / 0 |
+| rerun3 H3 (14 Oct) | `7205729` | 669 / 0 |
+| pair1 H1 (21 Oct) | `e0fc51e` | 669 / 0 |
+| rerun3 H2 (14 Oct) | `7205729` | did not stop; passed the oracle |
+
+The runs come from 2 builds. `git diff 7205729 e0fc51e -- native/crates/` changes only
+`harness-cli/src/main.rs` and `harness-cli/src/metrics.rs`: the `oracle_success` field and
+how `metrics.json` writes success. The core loop, the model client, the prompt and the tool
+set do not change. So the agent sends the same requests in both builds.
 
 The input count is the same each time. So the model gets the same prompt at the same point,
 after the same `list_files` result, and it often gives nothing back. fx never stopped this
@@ -65,7 +70,9 @@ inference. The logs do not prove it.**
 
 ## Open question for the team
 
-To name the cause, the proxy must record the exact upstream end value. A safe way:
-log the raw value only if it matches `^[A-Za-z_]{1,40}$`, else log `other`.
-That logs a fixed word, never model text. It changes `proxy.py`, so it needs a new pin
-and Jessie's review. The Chief decides if and when.
+To name the cause, the proxy must record the exact upstream end value. Plan (Chief
+approved, Jessie's form): add Gemini's known end values to the allow list (`OTHER`,
+`MALFORMED_FUNCTION_CALL`, `UNEXPECTED_TOOL_CALL`, `MAX_TOKENS`, `SAFETY`, `RECITATION`,
+`BLOCKLIST`, `PROHIBITED_CONTENT`, `SPII`) and log every other value as `other`. It needs
+a new pin and Jessie's review. Then a 10-time replay of request 2 gives the value and the rate.
+The result goes in this doc.
