@@ -13,6 +13,8 @@ def make_run(base, name, aborted):
     open(os.path.join(d, "cargo_exit"), "w").write("0")
     open(os.path.join(d, "wall_ms"), "w").write("1000")
     json.dump({"run": name, "oracle_success": True}, open(os.path.join(d, "summary.json"), "w"))
+    # A clean proxy log: main's guard refuses a folder with no proxy log or with zero 200 replies.
+    open(os.path.join(d, "proxy_usage.jsonl"), "w").write('{"status": 200}\n')
     if aborted:
         open(os.path.join(d, "ABORTED.txt"), "w").write("stopped by operator\n")
     return d
