@@ -241,6 +241,25 @@ def finish_label(v):
     return "other"
 
 
+# finish_reason_raw: the upstream finish_reason field only (never message text).
+# Rule: each allowed word has one fixed logged form. Input case is ignored.
+# OpenAI-style words (stop, length, tool_calls, content_filter) log lower case.
+# Gemini-only words log upper case. Unknown -> "unlisted". Missing/empty -> null.
+FINISH_RAW_WORDS = ("stop", "length", "tool_calls", "content_filter",
+                    "OTHER", "MALFORMED_FUNCTION_CALL", "UNEXPECTED_TOOL_CALL", "MAX_TOKENS", "SAFETY",
+                    "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII")
+_FINISH_RAW = {w.lower(): w for w in FINISH_RAW_WORDS}
+
+
+def finish_raw(v):
+    """Canonical allow-listed word, "unlisted", or None. Never free text."""
+    if v is None or v == "":
+        return None
+    if isinstance(v, str):
+        return _FINISH_RAW.get(v.strip().lower(), "unlisted")
+    return "unlisted"
+
+
 def nonstream_finish(obj):
     try:
         return (obj.get("choices") or [{}])[0].get("finish_reason")
@@ -262,7 +281,7 @@ def usage_record(status, usage, stream, start_ms=None, end_ms=None, finish=None)
             "output_tokens": num("completion_tokens", "output_tokens"),
             "start_ms": start_ms, "end_ms": end_ms,
             "dur_ms": (end_ms - start_ms) if start_ms is not None and end_ms is not None else None,
-            **({"finish_reason": finish_label(finish)} if int(status) == 200 else {})}
+            **({"finish_reason": finish_label(finish), "finish_reason_raw": finish_raw(finish)} if int(status) == 200 else {})}
 
 
 def log_usage(status, usage, stream, start_ms=None, finish=None):

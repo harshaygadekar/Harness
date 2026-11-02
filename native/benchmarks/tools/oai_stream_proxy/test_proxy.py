@@ -322,6 +322,48 @@ class AllowListAndAuthTests(unittest.TestCase):
         self.assertEqual(proxy.finish_label({"x": 1}), "other")
         self.assertEqual(proxy.finish_label(7), "other")
 
+    def test_finish_raw_case_insensitive(self):
+        for v in ("MAX_TOKENS", "max_tokens", "Max_Tokens"):
+            self.assertEqual(proxy.finish_raw(v), "MAX_TOKENS")
+        for w in ("OTHER", "MALFORMED_FUNCTION_CALL", "UNEXPECTED_TOOL_CALL", "SAFETY", "RECITATION",
+                  "BLOCKLIST", "PROHIBITED_CONTENT", "SPII"):
+            self.assertEqual(proxy.finish_raw(w.lower()), w)
+            self.assertEqual(proxy.finish_raw(w.title()), w)
+        for w in ("stop", "length", "tool_calls", "content_filter"):
+            self.assertEqual(proxy.finish_raw(w.upper()), w)
+
+    def test_finish_raw_upper_stop_logs_lower(self):
+        self.assertEqual(proxy.finish_raw("STOP"), "stop")
+        self.assertEqual(proxy.usage_record(200, {}, False, finish="STOP")["finish_reason_raw"], "stop")
+
+    def test_finish_raw_lower_other_logs_upper(self):
+        self.assertEqual(proxy.finish_raw("other"), "OTHER")
+        self.assertEqual(proxy.usage_record(200, {}, False, finish="other")["finish_reason_raw"], "OTHER")
+
+    def test_finish_raw_unknown_is_unlisted_not_other(self):
+        self.assertEqual(proxy.finish_raw("FINISH_REASON_UNSPECIFIED"), "unlisted")
+        self.assertEqual(proxy.finish_raw(7), "unlisted")
+        self.assertEqual(proxy.finish_raw({"x": 1}), "unlisted")
+
+    def test_finish_raw_missing_is_null(self):
+        self.assertIsNone(proxy.finish_raw(None))
+        self.assertIsNone(proxy.finish_raw(""))
+        self.assertIsNone(proxy.usage_record(200, {}, False)["finish_reason_raw"])
+        self.assertNotIn("finish_reason_raw", proxy.usage_record(503, {}, False, finish="stop"))
+
+    def test_finish_raw_message_like_text_not_logged(self):
+        msg = "SECRET_MSG_TEXT: stopped because MAX_TOKENS was hit"
+        r = proxy.usage_record(200, {}, False, finish=msg)
+        self.assertEqual(r["finish_reason_raw"], "unlisted")
+        self.assertNotIn("SECRET_MSG_TEXT", json.dumps(r))
+        # value only from the finish_reason field, never from message content
+        obj = {"choices": [{"message": {"content": "MAX_TOKENS"}, "finish_reason": None}]}
+        self.assertIsNone(proxy.finish_raw(proxy.nonstream_finish(obj)))
+        rw = proxy.StreamRewriter()
+        rw.chunk({"choices": [{"index": 0, "delta": {"content": "SAFETY"}}]})
+        rw.chunk({"choices": [{"index": 0, "delta": {}, "finish_reason": "max_tokens"}]})
+        self.assertEqual(proxy.finish_raw(rw.upstream_finish), "MAX_TOKENS")
+
     def test_finish_reason_on_200_rows_only_and_label_only(self):
         r = proxy.usage_record(200, {}, False, finish="SECRET_FREE_TEXT_y")
         self.assertEqual(r["finish_reason"], "other")
@@ -412,7 +454,7 @@ class AllowListAndAuthTests(unittest.TestCase):
         self.assertEqual(self.req("GET", "/models"), 404)  # blocked locally: not forwarded, not logged
         rows = [json.loads(l) for l in open(self.usage_path)]
         self.assertEqual(len(rows), 1)
-        self.assertEqual(set(rows[0]), {"ts_ms", "run_id", "status", "input_tokens", "output_tokens", "start_ms", "end_ms", "dur_ms", "finish_reason"})
+        self.assertEqual(set(rows[0]), {"ts_ms", "run_id", "status", "input_tokens", "output_tokens", "start_ms", "end_ms", "dur_ms", "finish_reason", "finish_reason_raw"})
         self.assertEqual(rows[0]["run_id"], "T7-run-A")  # from the operator file, not X-Run-Id
         self.assertEqual((rows[0]["status"], rows[0]["input_tokens"], rows[0]["output_tokens"]), (200, 11, 3))
         raw = open(self.usage_path).read()
@@ -424,7 +466,7 @@ class AllowListAndAuthTests(unittest.TestCase):
         rw = proxy.StreamRewriter()
         list(proxy.sse_rewrite(lines(), rw))
         rec = proxy.usage_record(200, rw.last_usage, True)
-        self.assertEqual(set(rec), {"ts_ms", "run_id", "status", "input_tokens", "output_tokens", "start_ms", "end_ms", "dur_ms", "finish_reason"})
+        self.assertEqual(set(rec), {"ts_ms", "run_id", "status", "input_tokens", "output_tokens", "start_ms", "end_ms", "dur_ms", "finish_reason", "finish_reason_raw"})
 
 
     def test_run_id_file_reread_and_header_ignored(self):
