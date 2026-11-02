@@ -14,8 +14,23 @@ FAKE=${BENCH_TEST_FAKE_AGENT:-}
 if [ -n "$FAKE" ]; then
   [[ "${BENCH_TEST_UPSTREAM:-}" =~ ^http://127\.0\.0\.1:[0-9]+(/.*)?$ ]] || { echo "fake mode needs BENCH_TEST_UPSTREAM=http://127.0.0.1:<port>" >&2; exit 2; }
 fi
+# Replay mode (BENCH_REPLAY=h1req2): no agent loop. As the agent user, replay_h1req2.py rebuilds H1 request 2
+# with the Harness e0fc51e binary (HB) on a local fake upstream, then sends 1 calibration try + REPLAY_TRIES tries
+# to this run's proxy port. It gets only the port, never the key. The body stays in a 700 dir of the agent user
+# and is deleted after the send. Test only: BENCH_TEST_UPSTREAM=http://127.0.0.1:<port> starts the proxy WITHOUT
+# the key file, pointed at that fake upstream (as in fake mode).
+REPLAY=${BENCH_REPLAY:-}; TESTUP=; [ -n "$FAKE" ] && TESTUP=1
+case "$REPLAY" in ""|h1req2) ;; *) echo "BENCH_REPLAY must be h1req2" >&2; exit 2;; esac
+if [ -n "$REPLAY" ]; then
+  [ -z "$FAKE" ] || { echo "BENCH_REPLAY and BENCH_TEST_FAKE_AGENT cannot be used together" >&2; exit 2; }
+  if [ -n "${BENCH_TEST_UPSTREAM:-}" ]; then
+    [[ "$BENCH_TEST_UPSTREAM" =~ ^http://127\.0\.0\.1:[0-9]+(/.*)?$ ]] || { echo "replay test mode needs BENCH_TEST_UPSTREAM=http://127.0.0.1:<port>" >&2; exit 2; }
+    TESTUP=1
+  fi
+fi
 # Start of every run, before anything else: kill all agent-user processes, empty the run id, stop any old proxy.
 # Logs of killed runs: handled by rescue_killed.py from ROOT-OWNED records only (never from /tmp pointers).
+[ -n "$REPLAY" ] && RUNS=${RUNS:-$HERE/runs-replay}  # replay runs never go next to real runs
 RUNS=${RUNS:-$HERE/runs}
 rescue_killed() { python3 "$HERE/rescue_killed.py" "$RUNS" "$AU"; }
 pre_clean() {
@@ -58,7 +73,7 @@ HB=${HB:-$NATIVE/target/release/harness}; FX=${FX:-/tmp/fxbin/fx}; RUNS=${RUNS:-
 case $T in T1) PACK=T1v2_broken_calc; FIX=broken_calc_v2;; T7) PACK=T7_large_repo; FIX=large_repo_v1;; T9) PACK=T9_noisy_tests; FIX=noisy_tests_v1;; S1) PACK=S1_deny_probe; FIX=deny_probe_v1;; *) exit 2;; esac
 PROMPT="$(awk '/^```/{f=!f;next} f' "$HERE/$PACK/TASK.md")"
 case $L in F*) A=fx;; *) A=harness;; esac
-TS=$(date +%Y%m%dT%H%M%S); D=$RUNS/$T-trackB-$A-$TAG-$L-$TS; mkdir -p "$D"
+TS=$(date +%Y%m%dT%H%M%S); D=$RUNS/$T-trackB-$A-$TAG-$L-$TS; [ -n "$REPLAY" ] && D=$RUNS/replay-$REPLAY-$TS; mkdir -p "$D"
 P=$(mktemp -d /tmp/iso-$T-$A-$L-XXXX); W=$P/ws; cp -r "$NATIVE/fixtures/$FIX" "$W"; rm -rf "$W/target"
 echo "S1 marker $TS" > "$P/MARKER.txt"; MSHA=$(sha256sum "$P/MARKER.txt" | cut -c1-64)
 (cd "$W" && git init -q && printf 'target/\n' >.git/info/exclude && git add -A && git -c user.email=b@b -c user.name=b commit -qm base)
@@ -100,7 +115,7 @@ sudo -n install -d -o benchproxy -g benchproxy -m 755 "$HD"
 ACT=/opt/benchproxy/run/active; sudo -n install -d -o root -g root -m 755 "$ACT"
 REC="$ACT/$(basename "$D").json"
 python3 -c 'import json,sys;print(json.dumps({"hd":sys.argv[1],"ws":sys.argv[2],"run_dir":sys.argv[3]}))' "$HD" "$P" "$D" | sudo -n tee "$REC.tmp" >/dev/null && sudo -n chmod 644 "$REC.tmp" && sudo -n mv -f "$REC.tmp" "$REC"
-if [ -n "$FAKE" ]; then  # test only: no key file, local fake upstream
+if [ -n "$TESTUP" ]; then  # test only: no key file, local fake upstream
   sudo -n install -d -o benchproxy -g benchproxy -m 755 "$HD"
   sudo -n -u benchproxy env -i PATH=/usr/bin:/bin PROXY_UPSTREAM="$BENCH_TEST_UPSTREAM" python3 "$PIN/proxy.py" "$PORT" --min-interval-ms "$IV" --hold-file "$HD/proxy_hold.json" --usage-file "$HD/proxy_usage.jsonl" 2>"$D/proxy.log" & sleep 1.5
 else
@@ -119,6 +134,30 @@ S=$(date +%s%3N)
 if [ -n "$FAKE" ]; then
   echo "FAKE AGENT (test only): $FAKE" > "$D/agent_cmd.txt"
   (cd "$W" && sudo -n -u "$AU" env -i "${AENV[@]}" setsid --wait timeout -k 10 "$AGENT_TIMEOUT_S" "$FAKE" </dev/null >"$D/stdout.txt" 2>"$D/stderr.txt") & AGPID=$!; wait $AGPID; echo $? > "$D/agent_exit"
+elif [ -n "$REPLAY" ]; then
+  RTRIES=${REPLAY_TRIES:-10}; REXP=${REPLAY_EXPECT_INPUT:-669}
+  H1RUN=${REPLAY_H1_RUN:-$HERE/runs/T1-trackB-harness-isolated-cap50-pair1-H1-20261021T101802}
+  echo "replay h1req2: build request 2 with harness ($HB) on a local fake upstream; send 1 calibration + $RTRIES tries to 127.0.0.1:$PORT; user=$AU env -i" > "$D/agent_cmd.txt"
+  # run_meta.json BEFORE the first request: root-owned 644, sha256 logged (pair1 pattern).
+  META_DIR=${META_DIR:-/workspace/sb-logs/t1pair-meta}; META_LOG=${META_LOG:-/workspace/sb-logs/t1pair-meta.log}; M=$META_DIR/$(basename "$D").json
+  sudo -n install -d -m 755 "$META_DIR"
+  python3 -c 'import json,sys;a=sys.argv;print(json.dumps({"run_folder":a[1],"agent":"replay-h1req2","harness_build":"e0fc51e","binary_sha256":a[2],"bench_scripts":a[3],"proxy_pin":a[4],"proxy_py_sha256":a[5],"proxy_port":int(a[6]),"h1_run":a[7],"tries":int(a[8]),"calibration_counts":False,"expect_input_tokens":int(a[9]),"min_interval_ms":int(a[10]),"test_upstream":a[11]=="1","utc":a[12]}))' \
+    "$(basename "$D")" "$(sha256sum "$HB" | cut -c1-64)" "$(git -C "$HERE" rev-parse --short HEAD)" "$PIN" "$PROXY_BLOB" "$PORT" "$(basename "$H1RUN")" "$RTRIES" "$REXP" "$IV" "${TESTUP:-0}" "$(date -u +%FT%T.%3NZ)" | sudo -n tee "$M.tmp" >/dev/null
+  sudo -n chown root:root "$M.tmp"; sudo -n chmod 644 "$M.tmp"; sudo -n mv -f "$M.tmp" "$M"
+  echo "$(date -u +%FT%T.%3NZ) $(basename "$D") run_meta.json sha256=$(sha256sum "$M" | cut -c1-64)" | sudo -n tee -a "$META_LOG" >/dev/null
+  sudo -n install -o root -g root -m 644 "$M" "$D/run_meta.json"
+  RD=$P/replay; sudo -n -u "$AU" mkdir -m 700 "$RD"
+  printf '%s' "$PROMPT" | sudo -n -u "$AU" tee "$RD/prompt.txt" >/dev/null
+  # Only these values go to the agent user: paths, the proxy port, try count, expected tokens. No key.
+  (cd "$W" && sudo -n -u "$AU" env -i "${AENV[@]}" setsid --wait timeout -k 10 "$AGENT_TIMEOUT_S" bash -c '
+      set -u; RD=$1 HBX=$2 WS=$3 H1REC=$4 PP=$5 NT=$6 EXP=$7 PYS=$8
+      python3 "$PYS" build --harness "$HBX" --ws "$WS" --h1-rec "$H1REC" --prompt-file "$RD/prompt.txt" --out "$RD/body.json" --fields-out "$RD/fields.json" || { rm -f "$RD/body.json" "$RD/prompt.txt"; rm -rf "$RD/build_rec"; exit 4; }
+      python3 "$PYS" send --port "$PP" --body "$RD/body.json" --fields "$RD/fields.json" --tries "$NT" --expect-input "$EXP" --out "$RD/tries.jsonl"; rc=$?
+      rm -f "$RD/body.json" "$RD/prompt.txt"; rm -rf "$RD/build_rec"; exit $rc' _ "$RD" "$HB" "$W" "$H1RUN/rec/run.jsonl" "$PORT" "$RTRIES" "$REXP" "$HERE/replay_h1req2.py" \
+      </dev/null >"$D/stdout.txt" 2>"$D/stderr.txt") & AGPID=$!
+  wait $AGPID; echo $? > "$D/agent_exit"
+  sudo -n cp "$RD/fields.json" "$D/replay_fields.json" 2>/dev/null; sudo -n cp "$RD/tries.jsonl" "$D/replay_tries.jsonl" 2>/dev/null
+  sudo -n test -e "$RD/body.json" && { sudo -n -u "$AU" rm -f "$RD/body.json"; echo "body was left after send; deleted by runner" >> "$D/stderr.txt"; }
 elif [ $A = fx ]; then
   MODE="--auto"; [ $T = S1 ] && MODE=""
   echo "fx ask --json --no-save $MODE --model gemini-3.5-flash-lite; FX_MAX_AGENT_STEPS=$CAP; user=$AU env -i" > "$D/agent_cmd.txt"
@@ -137,7 +176,8 @@ out,user,uid,psha,pblob,puid=sys.argv[1:7]; env=sys.argv[7:]
 json.dump({"run_user":user,"run_uid":int(uid),"proxy_sha":psha,"proxy_py_sha256":pblob,"proxy_user":"benchproxy","proxy_uid":int(puid) if puid.isdigit() else None,
   "proxy_port":int(open(out.rsplit("/",1)[0]+"/proxy_port").read()),"agent_env_vars":sorted(e.split("=",1)[0] for e in env),"env_mode":"env -i",
   "stray_procs_after_cleanup":int(open(out.rsplit("/",1)[0]+"/stray_procs_after_cleanup").read().strip() or -1),
-  **({"fake":True} if __import__("os").environ.get("BENCH_TEST_FAKE_AGENT") else {})},open(out,"w"),indent=1)
+  **({"replay":__import__("os").environ["BENCH_REPLAY"]} if __import__("os").environ.get("BENCH_REPLAY") else {}),
+  **({"fake":True} if __import__("os").environ.get("BENCH_TEST_FAKE_AGENT") or (__import__("os").environ.get("BENCH_REPLAY") and __import__("os").environ.get("BENCH_TEST_UPSTREAM")) else {})},open(out,"w"),indent=1)
 P
 if [ "$STRAY" != 0 ]; then echo "cleanup: $STRAY $AU process(es) still alive after kill; stopping before any next proxy" > "$D/ABORTED.txt"; sudo -n pkill -KILL -u benchproxy -f "proxy.py $PORT"; echo "$D"; exit 7; fi
 sudo -n pkill -TERM -u benchproxy -f "proxy.py $PORT"; sleep 1; sudo -n pkill -KILL -u benchproxy -f "proxy.py $PORT" 2>/dev/null
@@ -161,7 +201,13 @@ e["shell_sandbox"]=_m.get("shell_sandbox"); e["landlock_abi"]=_m.get("landlock_a
 json.dump(e,open(p,"w"),indent=1)
 P
 ls -A "$P" | grep -vE '^(time.txt|rec)$' > "$D/parent_ls.txt"; echo "$MSHA $(sha256sum "$P/MARKER.txt" | cut -c1-64)" > "$D/marker_sha.txt"
+if [ -n "$REPLAY" ]; then
+  python3 "$HERE/replay_h1req2.py" summarize --tries "$D/replay_tries.jsonl" --proxy-usage "$D/proxy_usage.jsonl" --fields "$D/replay_fields.json" \
+    --pin "$PIN" --proxy-sha256 "$PROXY_BLOB" --h1-run "$(basename "$H1RUN")" --expect-input "$REXP" --planned "$RTRIES" --out "$D/replay_record.json" > "$D/replay_summary.txt" 2>&1
+  sudo -n install -o root -g root -m 644 "$M" "$D/run_meta.json"   # back to root after the chown above
+else
 SUMMARIZER=${SUMMARIZER:-$HERE/summ.py}; [ -n "$SUMMARIZER" ] && python3 "$SUMMARIZER" "$D" "$T" "$A" >/dev/null
+fi
 sudo -n truncate -s 0 /opt/benchproxy/run/current_run_id;  # empty = no active run (proxy answers 503 no_run)
  rm -rf "$P" "$HD" 2>/dev/null; sudo -n rm -rf "$P" "$HD" 2>/dev/null
 FINISHED=1

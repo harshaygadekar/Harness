@@ -2,7 +2,7 @@
 """Test: run_guard.py refuses a run folder with a empty proxy_usage.jsonl, or no proxy_usage.jsonl and no proxy.log,
 and a run folder whose agent_exit is 127. A control folder is accepted. No model, no network.
 usage: python3 test_run_guard.py"""
-import os, subprocess, sys, tempfile
+import json, os, subprocess, sys, tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -44,6 +44,19 @@ def main():
         check("refuses agent exit 127", "127" in (run_guard.refuse_reason(e127) or ""))
         check("accepts agent exit 1 (a real agent failure still counts)", run_guard.refuse_reason(e1) is None)
         r = subprocess.run([sys.executable, os.path.join(HERE, "run_guard.py"), empty, e127], capture_output=True, text=True)
+        rep = make_run(base, "replay")
+        json.dump({"replay": "h1req2", "run_user": "benchagent"}, open(os.path.join(rep, "run_env.json"), "w"))
+        check("refuses a replay folder (run_env.json has replay)", "replay" in (run_guard.refuse_reason(rep) or ""))
+        good2 = make_run(base, "good2")
+        open(os.path.join(good2, "cargo_exit"), "w").write("0"); open(os.path.join(good2, "wall_ms"), "w").write("1000")
+        json.dump({"run": "good2", "oracle_success": True}, open(os.path.join(good2, "summary.json"), "w"))
+        for x in (rep,):
+            open(os.path.join(x, "cargo_exit"), "w").write("0"); open(os.path.join(x, "wall_ms"), "w").write("1000")
+            json.dump({"run": "replay", "oracle_success": True}, open(os.path.join(x, "summary.json"), "w"))
+        rt = subprocess.run([sys.executable, os.path.join(HERE, "results_table.py"), rep, good2], capture_output=True, text=True)
+        outp = rt.stdout + rt.stderr
+        check("results_table refuses the replay folder", "REFUSED" in outp and "replay" in outp, outp[-300:])
+        check("results_table counts only the control folder", "counted runs: 1;" in outp, outp[-300:])
         check("CLI exit 3 and two REFUSED lines", r.returncode == 3 and r.stderr.count("REFUSED") == 2, r.stderr)
         r = subprocess.run([sys.executable, os.path.join(HERE, "run_guard.py"), good], capture_output=True, text=True)
         check("CLI exit 0 for control folder", r.returncode == 0, r.stderr)

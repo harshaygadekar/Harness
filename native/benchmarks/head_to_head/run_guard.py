@@ -3,6 +3,7 @@ A run folder marked "fake": true (test-only fake agent) or "status": "killed" (r
 stays on disk, but it must never count toward any result.
 A run folder with ABORTED.txt (the run was stopped before it ended) is refused in the same way.
 A run folder with an empty proxy_usage.jsonl, or with no proxy_usage.jsonl and no proxy.log, is refused (no proxy rows, so no model call is proven).
+A run folder whose run_env.json has a "replay" key (a replay of one request, not a task run) is refused.
 A run folder whose agent_exit is 127 is refused (the agent command was not found, so the agent did not start).
 CLI: run_guard.py <run_dir> [...]  exit 3 if any folder is refused, else 0."""
 import json, os, sys
@@ -34,6 +35,8 @@ def refuse_reason(run_dir):
             m = json.load(open(p))
         except ValueError:
             return f"{name} is not valid JSON"
+        if "replay" in m:
+            return "run is a replay (%s), not a task run" % m.get("replay")
         if m.get("status") == "killed":
             return "run is marked killed"
         if m.get("fake") is True:

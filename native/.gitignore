@@ -11,3 +11,5 @@ benchmarks/head_to_head/runs/
 
 # Labeler output (derived from raw runs; per-run call sequences)
 benchmarks/head_to_head/labels_out/
+# Replay runs (one request replayed; never task results)
+benchmarks/head_to_head/runs-replay/
