@@ -46,9 +46,9 @@ if [ "${SETUP_BENCH_LIB:-}" = 1 ]; then return 0 2>/dev/null || exit 0; fi
 REPO=${1:-$(cd "$(dirname "$0")/../../.." && pwd)}
 
 # Expected values. Change these only after review.
-PIN_COMMIT=4b02f425bedc94b2829d1d94f84005049af4e602
+PIN_COMMIT=2246092e02cb1323d44e030464802c4985072104
 REL=native/benchmarks/tools/oai_stream_proxy
-PROXY_SHA256=49a946d601603f5858e0e889ae693c6552e96d75313462164ec7ba919e21a398
+PROXY_SHA256=a9af33f4712eca8f071e0a0d62e9ff44142fb67ea06da7e1a2ec2d0f9bed6285
 START_SHA256=d626ee838027342ac543546e6f20fbdf9e92e16662256d46258d7aaf7bd03d09
 # time 1.9-0.2 amd64. sha256 from Debian trixie main Packages.xz, checked with sqv against InRelease on 2026-11-02.
 TIME_DEB_URL=http://deb.debian.org/debian/pool/main/t/time/time_1.9-0.2_amd64.deb
