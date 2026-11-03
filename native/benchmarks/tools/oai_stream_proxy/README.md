@@ -48,6 +48,18 @@ whether re-injection is needed
 thought_signature in functionCall parts`. With `reinject`, it returns 200. So signatures must be round-tripped, and
 `reinject` is used for all bench runs for both agents.
 
+### Signature flags in `proxy_usage.jsonl`
+Each forwarded-request row also has these fields. They are flags and counts only. The proxy never logs the
+signature value, tool_call ids or message text.
+- `sig_in_reply`: `true` if the 200 reply (stream or non-stream) had at least one tool call with `extra_content`
+  that the proxy stored; `false` if none. `null` on non-200 rows.
+- `sig_put_back`: `true` if the proxy added at least one stored signature to this request; else `false`.
+  Always `false` with `PROXY_SIG_MODE=strip`. Also on transport-error rows.
+- `sig_put_back_count`: how many signatures were added to this request (int). Also on transport-error rows.
+- `reply_model`: upstream top-level `model` on 200 rows (stream: first chunk that has it), only if it matches
+  `^[A-Za-z0-9._:/-]{1,64}$`; else `"unlisted"`. Missing or non-200: `null`.
+The flags are request-local, so requests that run at the same time do not mix them.
+
 ## Pacing (`--min-interval-ms`)
     python3 proxy.py 8787 --min-interval-ms 5000 --hold-file /path/run/proxy_hold.json
 

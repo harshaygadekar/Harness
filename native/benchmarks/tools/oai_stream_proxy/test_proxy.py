@@ -201,7 +201,7 @@ class AllowListAndAuthTests(unittest.TestCase):
         self.assertEqual(st, 502)
         rows = [json.loads(l) for l in open(self.usage_path)]
         self.assertEqual(len(rows), 1)
-        self.assertEqual(set(rows[0]), {"status", "start_ms", "end_ms", "dur_ms", "exc_type", "phase"})
+        self.assertEqual(set(rows[0]), {"status", "start_ms", "end_ms", "dur_ms", "exc_type", "phase", "sig_put_back", "sig_put_back_count"})
         self.assertEqual(rows[0]["status"], "error")
         self.assertEqual(rows[0]["exc_type"], "ConnectionRefusedError")
         self.assertEqual(rows[0]["phase"], "connect")
@@ -258,7 +258,7 @@ class AllowListAndAuthTests(unittest.TestCase):
     def test_transport_error_phase_first_byte(self):
         rows = self._error_row_via(self._raw_upstream(b""), "MARKER_FB")
         self.assertEqual(len(rows), 1)
-        self.assertEqual(set(rows[0]), {"status", "start_ms", "end_ms", "dur_ms", "exc_type", "phase", "af"})
+        self.assertEqual(set(rows[0]), {"status", "start_ms", "end_ms", "dur_ms", "exc_type", "phase", "af", "sig_put_back", "sig_put_back_count"})
         self.assertEqual((rows[0]["status"], rows[0]["phase"]), ("error", "read"))
         self.assertEqual(rows[0]["exc_type"], "http.client.RemoteDisconnected")
         self.assertEqual(rows[0]["af"], "IPv4")
@@ -268,7 +268,7 @@ class AllowListAndAuthTests(unittest.TestCase):
                  b"40\r\ndata: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"}}]}\n\n")
         rows = self._error_row_via(self._raw_upstream(reply), "MARKER_MS")
         self.assertEqual(len(rows), 1)
-        self.assertEqual(set(rows[0]), {"status", "start_ms", "end_ms", "dur_ms", "exc_type", "phase", "af"})
+        self.assertEqual(set(rows[0]), {"status", "start_ms", "end_ms", "dur_ms", "exc_type", "phase", "af", "sig_put_back", "sig_put_back_count"})
         self.assertEqual((rows[0]["status"], rows[0]["phase"]), ("error", "read"))
         self.assertTrue(rows[0]["exc_type"])
         self.assertEqual(rows[0]["af"], "IPv4")
@@ -454,7 +454,8 @@ class AllowListAndAuthTests(unittest.TestCase):
         self.assertEqual(self.req("GET", "/models"), 404)  # blocked locally: not forwarded, not logged
         rows = [json.loads(l) for l in open(self.usage_path)]
         self.assertEqual(len(rows), 1)
-        self.assertEqual(set(rows[0]), {"ts_ms", "run_id", "status", "input_tokens", "output_tokens", "start_ms", "end_ms", "dur_ms", "finish_reason", "finish_reason_raw"})
+        self.assertEqual(set(rows[0]), {"ts_ms", "run_id", "status", "input_tokens", "output_tokens", "start_ms", "end_ms", "dur_ms", "finish_reason", "finish_reason_raw",
+                                    "sig_in_reply", "sig_put_back", "sig_put_back_count", "reply_model"})
         self.assertEqual(rows[0]["run_id"], "T7-run-A")  # from the operator file, not X-Run-Id
         self.assertEqual((rows[0]["status"], rows[0]["input_tokens"], rows[0]["output_tokens"]), (200, 11, 3))
         raw = open(self.usage_path).read()
@@ -466,7 +467,8 @@ class AllowListAndAuthTests(unittest.TestCase):
         rw = proxy.StreamRewriter()
         list(proxy.sse_rewrite(lines(), rw))
         rec = proxy.usage_record(200, rw.last_usage, True)
-        self.assertEqual(set(rec), {"ts_ms", "run_id", "status", "input_tokens", "output_tokens", "start_ms", "end_ms", "dur_ms", "finish_reason", "finish_reason_raw"})
+        self.assertEqual(set(rec), {"ts_ms", "run_id", "status", "input_tokens", "output_tokens", "start_ms", "end_ms", "dur_ms", "finish_reason", "finish_reason_raw",
+                                    "sig_in_reply", "sig_put_back", "sig_put_back_count", "reply_model"})
 
 
     def test_run_id_file_reread_and_header_ignored(self):
@@ -481,4 +483,167 @@ class AllowListAndAuthTests(unittest.TestCase):
         rows = [json.loads(l) for l in open(self.usage_path)]
         self.assertEqual([r["run_id"] for r in rows], ["T7-run-A", "T7-run-C"])
         open(self.runid_path, "w").write("T7-run-A\n")
+
+
+class SigFlagTests(unittest.TestCase):
+    """sig_in_reply / sig_put_back / reply_model flags. Local mock upstream, fake values only."""
+    SIGVAL = "FAKE_SIGVALUE_Zq81"
+    TCID = "call_FAKEID_77k"
+
+    @classmethod
+    def setUpClass(cls):
+        import threading, tempfile, os
+        from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
+        cls.reply = None  # (status, ctype, body bytes)
+        cls.got = []
+
+        class Up(BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+            def log_message(self, *a):
+                pass
+            def do_POST(self):
+                n = int(self.headers.get("Content-Length") or 0)
+                cls.got.append(self.rfile.read(n) if n else b"")
+                st, ct, body = cls.reply
+                self.send_response(st)
+                self.send_header("Content-Type", ct)
+                self.send_header("Content-Length", str(len(body)))
+                if "event-stream" in ct:
+                    self.send_header("Connection", "close")
+                self.end_headers()
+                self.wfile.write(body)
+
+        cls.up = ThreadingHTTPServer(("127.0.0.1", 0), Up)
+        threading.Thread(target=cls.up.serve_forever, daemon=True).start()
+        cls.saved = (proxy.UPSTREAM, proxy.UPSTREAM_KEY, proxy.USAGE_FILE, proxy.RUN_ID_FILE, proxy.SIG_MODE)
+        proxy.UPSTREAM = "http://127.0.0.1:%d/v1beta/openai" % cls.up.server_address[1]
+        proxy.UPSTREAM_KEY = "fake-test-key-123"
+        cls.dir = tempfile.mkdtemp()
+        cls.usage_path = os.path.join(cls.dir, "proxy_usage.jsonl")
+        proxy.USAGE_FILE = cls.usage_path
+        proxy.RUN_ID_FILE = os.path.join(cls.dir, "run_id")
+        open(proxy.RUN_ID_FILE, "w").write("SIG-run\n")
+        cls.px = proxy.make_server(0)
+        threading.Thread(target=cls.px.serve_forever, daemon=True).start()
+        cls.port = cls.px.server_address[1]
+
+    @classmethod
+    def tearDownClass(cls):
+        import shutil
+        cls.px.shutdown(); cls.up.shutdown()
+        cls.px.server_close(); cls.up.server_close()
+        proxy.UPSTREAM, proxy.UPSTREAM_KEY, proxy.USAGE_FILE, proxy.RUN_ID_FILE, proxy.SIG_MODE = cls.saved
+        shutil.rmtree(cls.dir, ignore_errors=True)
+
+    def setUp(self):
+        proxy._SIGS.clear()
+        proxy.SIG_MODE = "reinject"
+        open(self.usage_path, "w").close()
+
+    def tc(self, sig=True):
+        t = {"id": self.TCID, "type": "function", "function": {"name": "read_file", "arguments": "{}"}}
+        if sig:
+            t["extra_content"] = {"google": {"thought_signature": self.SIGVAL}}
+        return t
+
+    def nonstream(self, sig=True, model="gemini-2.5-flash", status=200):
+        o = {"choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "tool_calls": [self.tc(sig)]}}],
+             "usage": {"prompt_tokens": 1, "completion_tokens": 1}}
+        if model is not None:
+            o["model"] = model
+        if status != 200:
+            o = {"error": {"code": status, "status": "INVALID_ARGUMENT"}}
+        return (status, "application/json", json.dumps(o).encode())
+
+    def stream(self, sig=True, model="gemini-2.5-flash"):
+        c1 = {"choices": [{"index": 0, "delta": {"role": "assistant", "tool_calls": [self.tc(sig)]}}]}
+        c2 = {"choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}], "usage": {"prompt_tokens": 1}}
+        if model is not None:
+            c1["model"] = model; c2["model"] = "second-chunk-model"
+        b = "".join("data: %s\n\n" % json.dumps(c) for c in (c1, c2)) + "data: [DONE]\n\n"
+        return (200, "text/event-stream", b.encode())
+
+    def post(self, reply, with_prior_tool_call=False):
+        import http.client
+        type(self).reply = reply
+        msgs = [{"role": "user", "content": "hi"}]
+        if with_prior_tool_call:
+            msgs.append({"role": "assistant", "tool_calls": [self.tc(sig=False)]})
+        c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
+        c.request("POST", "/chat/completions", body=json.dumps({"model": "m", "messages": msgs}).encode(),
+                  headers={"Content-Type": "application/json"})
+        r = c.getresponse(); r.read(); c.close()
+        return r.status, [json.loads(l) for l in open(self.usage_path)][-1]
+
+    def test_nonstream_with_sig(self):
+        st, row = self.post(self.nonstream(sig=True))
+        self.assertEqual((st, row["sig_in_reply"], row["sig_put_back"], row["sig_put_back_count"]), (200, True, False, 0))
+
+    def test_nonstream_without_sig(self):
+        st, row = self.post(self.nonstream(sig=False))
+        self.assertIs(row["sig_in_reply"], False)
+
+    def test_stream_with_sig_in_tool_call_delta(self):
+        st, row = self.post(self.stream(sig=True))
+        self.assertEqual((st, row["sig_in_reply"], row["reply_model"]), (200, True, "gemini-2.5-flash"))
+        st, row = self.post(self.stream(sig=False))
+        self.assertIs(row["sig_in_reply"], False)
+
+    def test_put_back_on_later_request(self):
+        self.post(self.nonstream(sig=True))
+        st, row = self.post(self.nonstream(sig=False), with_prior_tool_call=True)
+        self.assertEqual((row["sig_put_back"], row["sig_put_back_count"]), (True, 1))
+        self.assertIn(self.SIGVAL.encode(), self.got[-1])  # behaviour unchanged: upstream gets it back
+
+    def test_unknown_id_no_put_back(self):
+        st, row = self.post(self.nonstream(sig=False), with_prior_tool_call=True)
+        self.assertEqual((row["sig_put_back"], row["sig_put_back_count"]), (False, 0))
+
+    def test_strip_mode_never_puts_back(self):
+        proxy.SIG_MODE = "strip"
+        _, r1 = self.post(self.nonstream(sig=True))
+        self.assertIs(r1["sig_in_reply"], True)
+        _, r2 = self.post(self.nonstream(sig=False), with_prior_tool_call=True)
+        self.assertEqual((r2["sig_put_back"], r2["sig_put_back_count"]), (False, 0))
+        self.assertNotIn(self.SIGVAL.encode(), self.got[-1])
+
+    def test_non200_nulls_and_put_back_still_logged(self):
+        self.post(self.nonstream(sig=True))
+        st, row = self.post(self.nonstream(status=400), with_prior_tool_call=True)
+        self.assertEqual(st, 400)
+        self.assertIsNone(row["sig_in_reply"]); self.assertIsNone(row["reply_model"])
+        self.assertIs(row["sig_put_back"], True)
+
+    def test_reply_model_allow_unlisted_missing(self):
+        self.assertEqual(self.post(self.nonstream(model="models/gemini-2.5-pro:x_1"))[1]["reply_model"], "models/gemini-2.5-pro:x_1")
+        self.assertEqual(self.post(self.nonstream(model="bad model; text"))[1]["reply_model"], "unlisted")
+        self.assertEqual(self.post(self.nonstream(model="a" * 65))[1]["reply_model"], "unlisted")
+        self.assertEqual(self.post(self.nonstream(model=123))[1]["reply_model"], "unlisted")
+        self.assertIsNone(self.post(self.nonstream(model=None))[1]["reply_model"])
+        self.assertIsNone(self.post(self.stream(model=None))[1]["reply_model"])
+
+    def test_per_request_ctx_not_shared(self):
+        proxy.rewrite_request({"messages": [{"role": "assistant", "tool_calls": [{"id": "x1", "extra_content": {"k": 1}}]}]})
+        proxy._SIGS["x2"] = {"k": 2}
+        a, b = {}, {}
+        proxy.rewrite_request({"messages": [{"role": "assistant", "tool_calls": [{"id": "x2"}]}]}, a)
+        proxy.rewrite_request({"messages": [{"role": "assistant", "tool_calls": [{"id": "nope"}]}]}, b)
+        self.assertEqual((a["put_back"], b["put_back"]), (1, 0))
+
+    def test_no_signature_or_id_in_any_log(self):
+        import io, sys
+        old, buf = sys.stderr, io.StringIO()
+        sys.stderr = buf
+        try:
+            self.post(self.nonstream(sig=True))
+            self.post(self.stream(sig=True))
+            self.post(self.nonstream(sig=False), with_prior_tool_call=True)
+            self.post(self.nonstream(status=400), with_prior_tool_call=True)
+        finally:
+            sys.stderr = old
+        rows = open(self.usage_path).read()
+        self.assertEqual(len(rows.splitlines()), 4)
+        for log in (rows, buf.getvalue()):
+            for bad in (self.SIGVAL, self.TCID, "thought_signature", "extra_content", "FAKEID", "hi\""):
+                self.assertNotIn(bad, log)
 
