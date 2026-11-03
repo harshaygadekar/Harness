@@ -201,7 +201,7 @@ class AllowListAndAuthTests(unittest.TestCase):
         self.assertEqual(st, 502)
         rows = [json.loads(l) for l in open(self.usage_path)]
         self.assertEqual(len(rows), 1)
-        self.assertEqual(set(rows[0]), {"status", "start_ms", "end_ms", "dur_ms", "exc_type", "phase", "sig_put_back", "sig_put_back_count"})
+        self.assertEqual(set(rows[0]), {"status", "start_ms", "end_ms", "dur_ms", "exc_type", "phase", "sig_put_back", "sig_put_back_count", "sig_seen_any", "req_tool_calls"})
         self.assertEqual(rows[0]["status"], "error")
         self.assertEqual(rows[0]["exc_type"], "ConnectionRefusedError")
         self.assertEqual(rows[0]["phase"], "connect")
@@ -258,7 +258,7 @@ class AllowListAndAuthTests(unittest.TestCase):
     def test_transport_error_phase_first_byte(self):
         rows = self._error_row_via(self._raw_upstream(b""), "MARKER_FB")
         self.assertEqual(len(rows), 1)
-        self.assertEqual(set(rows[0]), {"status", "start_ms", "end_ms", "dur_ms", "exc_type", "phase", "af", "sig_put_back", "sig_put_back_count"})
+        self.assertEqual(set(rows[0]), {"status", "start_ms", "end_ms", "dur_ms", "exc_type", "phase", "af", "sig_put_back", "sig_put_back_count", "sig_seen_any", "req_tool_calls"})
         self.assertEqual((rows[0]["status"], rows[0]["phase"]), ("error", "read"))
         self.assertEqual(rows[0]["exc_type"], "http.client.RemoteDisconnected")
         self.assertEqual(rows[0]["af"], "IPv4")
@@ -268,7 +268,7 @@ class AllowListAndAuthTests(unittest.TestCase):
                  b"40\r\ndata: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"}}]}\n\n")
         rows = self._error_row_via(self._raw_upstream(reply), "MARKER_MS")
         self.assertEqual(len(rows), 1)
-        self.assertEqual(set(rows[0]), {"status", "start_ms", "end_ms", "dur_ms", "exc_type", "phase", "af", "sig_put_back", "sig_put_back_count"})
+        self.assertEqual(set(rows[0]), {"status", "start_ms", "end_ms", "dur_ms", "exc_type", "phase", "af", "sig_put_back", "sig_put_back_count", "sig_seen_any", "req_tool_calls"})
         self.assertEqual((rows[0]["status"], rows[0]["phase"]), ("error", "read"))
         self.assertTrue(rows[0]["exc_type"])
         self.assertEqual(rows[0]["af"], "IPv4")
@@ -455,7 +455,7 @@ class AllowListAndAuthTests(unittest.TestCase):
         rows = [json.loads(l) for l in open(self.usage_path)]
         self.assertEqual(len(rows), 1)
         self.assertEqual(set(rows[0]), {"ts_ms", "run_id", "status", "input_tokens", "output_tokens", "start_ms", "end_ms", "dur_ms", "finish_reason", "finish_reason_raw",
-                                    "sig_in_reply", "sig_put_back", "sig_put_back_count", "reply_model"})
+                                    "sig_in_reply", "sig_put_back", "sig_put_back_count", "reply_model", "sig_seen_any", "req_tool_calls"})
         self.assertEqual(rows[0]["run_id"], "T7-run-A")  # from the operator file, not X-Run-Id
         self.assertEqual((rows[0]["status"], rows[0]["input_tokens"], rows[0]["output_tokens"]), (200, 11, 3))
         raw = open(self.usage_path).read()
@@ -468,7 +468,7 @@ class AllowListAndAuthTests(unittest.TestCase):
         list(proxy.sse_rewrite(lines(), rw))
         rec = proxy.usage_record(200, rw.last_usage, True)
         self.assertEqual(set(rec), {"ts_ms", "run_id", "status", "input_tokens", "output_tokens", "start_ms", "end_ms", "dur_ms", "finish_reason", "finish_reason_raw",
-                                    "sig_in_reply", "sig_put_back", "sig_put_back_count", "reply_model"})
+                                    "sig_in_reply", "sig_put_back", "sig_put_back_count", "reply_model", "sig_seen_any", "req_tool_calls"})
 
 
     def test_run_id_file_reread_and_header_ignored(self):
@@ -630,6 +630,67 @@ class SigFlagTests(unittest.TestCase):
         proxy.rewrite_request({"messages": [{"role": "assistant", "tool_calls": [{"id": "nope"}]}]}, b)
         self.assertEqual((a["put_back"], b["put_back"]), (1, 0))
 
+    def raw(self, obj, stream=False):
+        if stream:
+            first = {"model": "g", "choices": [{"index": 0, "delta": {"role": "assistant", "content": "x"}}]}
+            b = "".join("data: %s\n\n" % json.dumps(c) for c in (first, obj)) + "data: [DONE]\n\n"
+            return (200, "text/event-stream", b.encode())
+        return (200, "application/json", json.dumps(obj).encode())
+
+    def flags(self, reply):
+        row = self.post(reply)[1]
+        return row["sig_seen_any"], row["sig_in_reply"]
+
+    def test_seen_any_tool_call_with_id(self):
+        self.assertEqual(self.flags(self.nonstream(sig=True)), (True, True))
+        self.assertEqual(self.flags(self.stream(sig=True)), (True, True))
+
+    def test_seen_any_tool_call_without_id(self):
+        tc = self.tc(); del tc["id"]
+        self.assertEqual(self.flags(self.raw({"choices": [{"index": 0, "finish_reason": "stop",
+                         "message": {"tool_calls": [tc]}}]})), (True, False))
+
+    def test_seen_any_delta_extra_content(self):
+        c = {"choices": [{"index": 0, "delta": {"extra_content": {"google": {"thought_signature": self.SIGVAL}}}, "finish_reason": "stop"}]}
+        self.assertEqual(self.flags(self.raw(c, stream=True)), (True, False))
+
+    def test_seen_any_nested_signature_key(self):
+        o = {"choices": [{"index": 0, "finish_reason": "stop", "message": {"content": "x", "meta": {"a": [{"b": {"thoughtSignature": self.SIGVAL}}]}}}]}
+        self.assertEqual(self.flags(self.raw(o)), (True, False))
+
+    def test_seen_any_none_or_empty(self):
+        self.assertEqual(self.flags(self.nonstream(sig=False)), (False, False))
+        for empty in ({}, "", None, []):
+            tc = self.tc(sig=False); tc["extra_content"] = empty
+            o = {"choices": [{"index": 0, "finish_reason": "stop", "message": {"tool_calls": [tc], "thought_signature": ""}}]}
+            self.assertEqual(self.flags(self.raw(o)), (False, False), empty)
+
+    def test_seen_any_later_stream_chunk(self):
+        c = {"choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}], "extra_content": {"google": {"thought_signature": self.SIGVAL}}}
+        self.assertEqual(self.flags(self.raw(c, stream=True)), (True, False))
+
+    def test_seen_any_null_on_non200(self):
+        self.assertIsNone(self.post(self.nonstream(status=400))[1]["sig_seen_any"])
+        self.assertIsNone(proxy.usage_record(503, {}, False, seen_any=True)["sig_seen_any"])
+
+    def test_seen_any_depth_cap(self):
+        deep = {"thoughtSignature": "v"}
+        for _ in range(200):
+            deep = {"n": deep}
+        self.assertIs(proxy.sig_seen_any(deep), False)
+        self.assertIs(proxy.sig_seen_any({"n": {"n": {"thoughtSignature": "v"}}}), True)
+
+    def test_req_tool_calls(self):
+        _, r0 = self.post(self.nonstream(sig=False))
+        self.assertEqual((r0["req_tool_calls"], r0["sig_put_back"]), (0, False))
+        _, r1 = self.post(self.nonstream(sig=False), with_prior_tool_call=True)  # id not known
+        self.assertEqual((r1["req_tool_calls"], r1["sig_put_back"]), (1, False))
+        self.post(self.nonstream(sig=True))  # now the id is known
+        _, r2 = self.post(self.nonstream(sig=False), with_prior_tool_call=True)
+        self.assertEqual((r2["req_tool_calls"], r2["sig_put_back"]), (1, True))
+        self.assertEqual(proxy.count_req_tool_calls({"messages": [{"role": "user", "tool_calls": [{}]}, "x",
+                         {"role": "assistant", "tool_calls": [{}, {}]}]}), 2)
+
     def test_no_signature_or_id_in_any_log(self):
         import io, sys
         old, buf = sys.stderr, io.StringIO()
@@ -639,11 +700,17 @@ class SigFlagTests(unittest.TestCase):
             self.post(self.stream(sig=True))
             self.post(self.nonstream(sig=False), with_prior_tool_call=True)
             self.post(self.nonstream(status=400), with_prior_tool_call=True)
+            tc = self.tc(); del tc["id"]
+            self.post(self.raw({"choices": [{"index": 0, "finish_reason": "stop", "message": {"tool_calls": [tc],
+                                "meta": {"thoughtSignature": self.SIGVAL}}}]}))
+            self.post(self.raw({"choices": [{"index": 0, "delta": {"extra_content": {"g": self.SIGVAL}}, "finish_reason": "stop"}]}, stream=True))
         finally:
             sys.stderr = old
         rows = open(self.usage_path).read()
-        self.assertEqual(len(rows.splitlines()), 4)
+        self.assertEqual(len(rows.splitlines()), 6)
+        self.assertEqual([json.loads(l)["sig_seen_any"] for l in rows.splitlines()][-2:], [True, True])
+        self.assertEqual([json.loads(l)["req_tool_calls"] for l in rows.splitlines()], [0, 0, 1, 1, 0, 0])
         for log in (rows, buf.getvalue()):
-            for bad in (self.SIGVAL, self.TCID, "thought_signature", "extra_content", "FAKEID", "hi\""):
+            for bad in (self.SIGVAL, self.TCID, "thought_signature", "extra_content", "thoughtSignature", "FAKEID", "hi\"", "meta"):
                 self.assertNotIn(bad, log)
 

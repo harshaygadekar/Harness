@@ -57,6 +57,26 @@ def model_label(v):
     return v if isinstance(v, str) and _MODEL_RE.fullmatch(v) else "unlisted"
 
 
+SIG_WALK_MAX_DEPTH = 64
+_EMPTY = (None, "", {}, [])
+
+
+def sig_seen_any(obj, depth=0):
+    """True if obj has, at any depth, a non-empty "extra_content" key or a non-empty key whose name
+    contains "signature" (any case). Raw data, before any rewrite. Depth capped; stops at first hit.
+    Returns a bool only; never the value, key path or ids."""
+    if depth > SIG_WALK_MAX_DEPTH:
+        return False
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if isinstance(k, str) and (k == "extra_content" or "signature" in k.lower()) and not any(v is e or (type(v) is type(e) and v == e) for e in _EMPTY):
+                return True
+        return any(sig_seen_any(v, depth + 1) for v in obj.values() if isinstance(v, (dict, list)))
+    if isinstance(obj, list):
+        return any(sig_seen_any(v, depth + 1) for v in obj if isinstance(v, (dict, list)))
+    return False
+
+
 def nonstream_sig_count(obj):
     """Count tool calls in a non-stream reply that remember() would store. Read only; logs no values."""
     n = 0
@@ -81,10 +101,13 @@ class StreamRewriter:
         self.last_usage = None  # final usage seen in the stream (counts only; for the usage log)
         self.upstream_finish = None  # first upstream finish_reason seen (before any rewrite); label only
         self.sigs_seen = 0        # per response: tool calls whose extra_content remember() stored (count only)
+        self.sig_seen_any = False  # per response: any non-empty extra_content / *signature* key in raw chunks
         self.reply_model = None   # per response: first top-level "model" seen (raw; label applied at log time)
 
     def chunk(self, obj):
         """Return rewritten obj, or None to drop it."""
+        if not self.sig_seen_any and sig_seen_any(obj):  # raw chunk, before extra_content is stripped
+            self.sig_seen_any = True
         if self.reply_model is None and isinstance(obj, dict) and obj.get("model") is not None:
             self.reply_model = obj.get("model")
         usage = obj.pop("usage", None)
@@ -156,6 +179,18 @@ def rewrite_nonstream(obj):
             remember(tc)
             tc.pop("extra_content", None)
     return obj
+
+
+def count_req_tool_calls(obj):
+    """Number of tool calls in assistant messages of a request. Count only; no ids."""
+    n = 0
+    try:
+        for m in obj.get("messages") or []:
+            if isinstance(m, dict) and m.get("role") == "assistant" and isinstance(m.get("tool_calls"), list):
+                n += len(m["tool_calls"])
+    except (AttributeError, TypeError):
+        return 0
+    return n
 
 
 def rewrite_request(obj, ctx=None):
@@ -304,7 +339,7 @@ def nonstream_finish(obj):
 
 
 def usage_record(status, usage, stream, start_ms=None, end_ms=None, finish=None,
-                 sigs_in_reply=None, put_back=0, reply_model=None):
+                 sigs_in_reply=None, put_back=0, reply_model=None, seen_any=None, req_tool_calls=0):
     """Counts-only record: never bodies, headers or keys. start_ms = upstream send (after pacing), end_ms = response fully relayed."""
     u = usage if isinstance(usage, dict) else {}
     def num(*names):
@@ -321,15 +356,18 @@ def usage_record(status, usage, stream, start_ms=None, end_ms=None, finish=None,
             **({"finish_reason": finish_label(finish), "finish_reason_raw": finish_raw(finish)} if int(status) == 200 else {}),
             # Flags and counts only: never the signature value, tool_call ids or message text.
             "sig_in_reply": (bool(sigs_in_reply) if int(status) == 200 else None),
+            "sig_seen_any": (bool(seen_any) if int(status) == 200 else None),
             "sig_put_back": bool(put_back), "sig_put_back_count": int(put_back or 0),
+            "req_tool_calls": int(req_tool_calls or 0),
             "reply_model": (model_label(reply_model) if int(status) == 200 else None)}
 
 
-def log_usage(status, usage, stream, start_ms=None, finish=None, sigs_in_reply=None, put_back=0, reply_model=None):
+def log_usage(status, usage, stream, start_ms=None, finish=None, sigs_in_reply=None, put_back=0, reply_model=None,
+              seen_any=None, req_tool_calls=0):
     if not USAGE_FILE:
         return
     line = json.dumps(usage_record(status, usage, stream, start_ms, _now_ms() if start_ms is not None else None, finish,
-                                   sigs_in_reply, put_back, reply_model)) + "\n"
+                                   sigs_in_reply, put_back, reply_model, seen_any, req_tool_calls)) + "\n"
     with _USAGE_LOCK:
         with open(USAGE_FILE, "a") as f:
             f.write(line)
@@ -353,7 +391,7 @@ def sock_af(conn):
     return {socket.AF_INET: "IPv4", socket.AF_INET6: "IPv6"}.get(fam)
 
 
-def log_transport_error(start_ms, exc=None, phase=None, af=None, side=None, put_back=None):
+def log_transport_error(start_ms, exc=None, phase=None, af=None, side=None, put_back=None, req_tool_calls=0):
     """Upstream transport error: status "error", times, exception type name and phase.
     No exception text, no headers, no URL."""
     if not USAGE_FILE:
@@ -371,6 +409,8 @@ def log_transport_error(start_ms, exc=None, phase=None, af=None, side=None, put_
     if put_back is not None:  # forwarded request: flag and count only
         rec["sig_put_back"] = bool(put_back)
         rec["sig_put_back_count"] = int(put_back)
+        rec["sig_seen_any"] = None  # no complete reply on a transport error
+        rec["req_tool_calls"] = int(req_tool_calls or 0)
     line = json.dumps(rec) + "\n"
     with _USAGE_LOCK:
         with open(USAGE_FILE, "a") as f:
@@ -439,10 +479,12 @@ class H(BaseHTTPRequestHandler):
             self.end_headers()
             self.close_connection = True
             return
-        rq = {"put_back": 0}  # request-local; never shared across requests
+        rq = {"put_back": 0, "tool_calls": 0}  # request-local; never shared across requests
         if body:
             try:
-                body = json.dumps(rewrite_request(json.loads(body), rq)).encode()
+                ro = json.loads(body)
+                rq["tool_calls"] = count_req_tool_calls(ro)  # before rewrite_request
+                body = json.dumps(rewrite_request(ro, rq)).encode()
             except ValueError:
                 pass
         u = urllib.parse.urlsplit(UPSTREAM)
@@ -471,7 +513,7 @@ class H(BaseHTTPRequestHandler):
         except Exception as e:
             af = af or sock_af(conn)
             # Transport error: log times, exception type name and phase only, never the exception text.
-            log_transport_error(t0, e, phase, af, put_back=rq["put_back"])
+            log_transport_error(t0, e, phase, af, put_back=rq["put_back"], req_tool_calls=rq["tool_calls"])
             try:
                 conn.close()
                 self.send_response(502)
@@ -500,7 +542,7 @@ class H(BaseHTTPRequestHandler):
                     break
                 except Exception as e:
                     # Upstream side: a transport error.
-                    log_transport_error(t0, e, "read", af, put_back=rq["put_back"])
+                    log_transport_error(t0, e, "read", af, put_back=rq["put_back"], req_tool_calls=rq["tool_calls"])
                     self.close_connection = True
                     return
                 try:
@@ -508,23 +550,25 @@ class H(BaseHTTPRequestHandler):
                     self.wfile.flush()
                 except Exception as e:
                     # Client side (the agent closed its socket): not a transport error.
-                    log_transport_error(t0, e, None, None, side="client", put_back=rq["put_back"])
+                    log_transport_error(t0, e, None, None, side="client", put_back=rq["put_back"], req_tool_calls=rq["tool_calls"])
                     self.close_connection = True
                     return
-            log_usage(r.status, rw.last_usage, True, t0, rw.upstream_finish, rw.sigs_seen, rq["put_back"], rw.reply_model)
+            log_usage(r.status, rw.last_usage, True, t0, rw.upstream_finish, rw.sigs_seen, rq["put_back"], rw.reply_model, rw.sig_seen_any, rq["tool_calls"])
             self.close_connection = True
             return
         data = r.read()
         usage = finish = model = None
         nsig = 0
+        seen = False
         if "json" in ctype:
             try:
                 jo = json.loads(data)
                 usage = jo.get("usage"); finish = nonstream_finish(jo)
                 model = jo.get("model"); nsig = nonstream_sig_count(jo)
+                seen = sig_seen_any(jo)  # raw body, before rewrite_nonstream strips it
             except (ValueError, AttributeError):
                 usage = None
-        log_usage(r.status, usage, False, t0, finish, nsig, rq["put_back"], model)
+        log_usage(r.status, usage, False, t0, finish, nsig, rq["put_back"], model, seen, rq["tool_calls"])
         if r.status == 200 and "json" in ctype:
             try:
                 data = json.dumps(rewrite_nonstream(json.loads(data))).encode()

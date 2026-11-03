@@ -56,6 +56,13 @@ signature value, tool_call ids or message text.
 - `sig_put_back`: `true` if the proxy added at least one stored signature to this request; else `false`.
   Always `false` with `PROXY_SIG_MODE=strip`. Also on transport-error rows.
 - `sig_put_back_count`: how many signatures were added to this request (int). Also on transport-error rows.
+- `req_tool_calls`: number of tool calls in assistant messages of the forwarded request, counted before the
+  proxy adds signatures back. Count only, no ids. On every forwarded row, also transport-error rows.
+- `sig_seen_any`: `true` if the raw 200 reply (non-stream body, or any stream chunk), at any depth, has a key
+  `extra_content` with a non-empty value, or a key whose name contains `signature` (any case) with a non-empty
+  value. It is checked before the proxy strips `extra_content`, and it does not use the store rule. `false` if
+  none. `null` on non-200 and transport-error rows. The walk stops at depth 64 (deeper data counts as not seen) and at
+  the first hit. `sig_seen_any` true with `sig_in_reply` false means "sent but not stored".
 - `reply_model`: upstream top-level `model` on 200 rows (stream: first chunk that has it), only if it matches
   `^[A-Za-z0-9._:/-]{1,64}$`; else `"unlisted"`. Missing or non-200: `null`.
 The flags are request-local, so requests that run at the same time do not mix them.
